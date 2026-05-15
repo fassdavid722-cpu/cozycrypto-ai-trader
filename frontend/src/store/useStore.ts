@@ -81,6 +81,8 @@ interface AppState {
   // Chat
   messages: ChatMessage[]
   addMessage: (m: ChatMessage) => void
+  setMessages: (m: ChatMessage[]) => void
+  clearMessages: () => void
   isThinking: boolean
   setThinking: (v: boolean) => void
 
@@ -121,6 +123,8 @@ export const useStore = create<AppState>((set) => ({
 
   messages: [],
   addMessage: (m) => set((s) => ({ messages: [...s.messages, m] })),
+  setMessages: (messages) => set({ messages }),
+  clearMessages: () => set({ messages: [] }),
   isThinking: false,
   setThinking: (isThinking) => set({ isThinking }),
 

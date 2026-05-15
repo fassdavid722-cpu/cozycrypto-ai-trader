@@ -17,11 +17,11 @@ const quickActions = [
 
 export default function Dashboard() {
   const { tickers, watchlist, portfolioValue, portfolioChange, portfolioHistory,
-          workflows, alerts, messages, addMessage, isThinking, setThinking,
+          workflows, alerts, messages, addMessage, setMessages, clearMessages, isThinking, setThinking,
           aiStatus, setActiveTab } = useStore()
 
   const [input, setInput] = useState('')
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(() => `dash_${Date.now()}`)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const displayMessages = messages.slice(-6)
 
@@ -37,10 +37,9 @@ export default function Dashboard() {
       const res = await fetch(`${API}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: sessionId, history: messages.slice(-10) })
+        body: JSON.stringify({ message: text, session_id: sessionId, history: messages.slice(-10), save: true })
       })
       const data = await res.json()
-      if (data.session_id) setSessionId(data.session_id)
       addMessage({ id: (Date.now()+1).toString(), role: 'ai', content: data.reply, timestamp: Date.now() })
     } catch {
       addMessage({ id: (Date.now()+1).toString(), role: 'ai', content: "Connection issue — retrying shortly.", timestamp: Date.now() })

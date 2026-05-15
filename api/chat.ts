@@ -77,7 +77,7 @@ async function fetchCandles(symbol: string, granularity: string, limit = 60) {
 }
 
 // ── Memory helpers (GitHub-backed) ────────────────────────────────────────────
-async function saveSession(sessionId: string, messages: any[], title: string) {
+async function saveSession(sessionId: string, messages: any[], title?: string) {
   if (!GH_TOKEN || !GH_REPO) return
   try {
     const path = `conversations/${sessionId}.json`
@@ -85,7 +85,16 @@ async function saveSession(sessionId: string, messages: any[], title: string) {
     // Check if file exists
     const check = await fetch(apiUrl, { headers: { 'Authorization': `Bearer ${GH_TOKEN}` } })
     const existing = check.ok ? await check.json() as any : null
-    const content = Buffer.from(JSON.stringify({ sessionId, title, messages, updatedAt: new Date().toISOString() })).toString('base64')
+    
+    let finalTitle = title
+    if (existing) {
+      const existingData = JSON.parse(Buffer.from(existing.content, 'base64').toString())
+      finalTitle = existingData.title || title || sessionId
+    } else {
+      finalTitle = title || sessionId
+    }
+
+    const content = Buffer.from(JSON.stringify({ sessionId, title: finalTitle, messages, updatedAt: new Date().toISOString() })).toString('base64')
     const body: any = { message: `💬 session: ${sessionId}`, content }
     if (existing?.sha) body.sha = existing.sha
     await fetch(apiUrl, { method: 'PUT', headers: { 'Authorization': `Bearer ${GH_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -515,11 +524,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { message, history = [], session_id, save = true } = req.body || {}
   if (!message) return res.status(400).json({ error: 'message required' })
 
-  // Load persisted session history from GitHub if session_id provided and no history passed
+  // Load persisted session history from GitHub if session_id provided
   let sessionHistory = history
-  if (session_id && history.length === 0) {
+  if (session_id && (history.length === 0 || message === 'LOAD_HISTORY')) {
     const stored = await loadSession(session_id)
     if (stored.length) sessionHistory = stored
+  }
+
+  // Special case for just loading history
+  if (message === 'LOAD_HISTORY') {
+    return res.json({ reply: 'LOAD_HISTORY_ACK', history: sessionHistory, session_id })
   }
 
   const model = pickModel(message)
@@ -527,7 +541,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const messages = [
     { role:'system', content: SYSTEM },
-    ...sessionHistory.slice(-20).map((m:any) => ({ role: m.role==='ai'?'assistant':m.role, content: m.content })),
+    ...sessionHistory.slice(-20).map((m:any) => ({ role: m.role==='ai'?'assistant':m.role, content: m.content, timestamp: m.timestamp })),
     { role:'user', content: message }
   ]
 
@@ -537,10 +551,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (save && session_id) {
     const updatedHistory = [...sessionHistory, { role:'user', content:message, timestamp:Date.now() }, { role:'ai', content:reply, timestamp:Date.now() }]
     // Generate title from first user message
-    const title = sessionHistory.length === 0 ? message.slice(0, 60) : undefined
-    saveSession(session_id, updatedHistory, title || session_id).catch(()=>{})
+    const title = (sessionHistory.length === 0 || (sessionHistory.length === 1 && sessionHistory[0].role === 'system')) 
+      ? message.slice(0, 60) 
+      : undefined
+    saveSession(session_id, updatedHistory, title).catch(()=>{})
   }
 
   const brainName = model.includes('qwen')?'Math Brain':model.includes('8b')?'Fast Brain':'Trade Brain'
-  res.json({ reply: reply||'Retry in a moment.', brain:brainName, tools_called:toolsUsed, session_id, timestamp:new Date().toISOString() })
+  res.json({ reply: reply||'Retry in a moment.', brain:brainName, tools_called:toolsUsed, session_id, history: save ? undefined : sessionHistory, timestamp:new Date().toISOString() })
 }

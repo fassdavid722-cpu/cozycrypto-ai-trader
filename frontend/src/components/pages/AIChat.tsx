@@ -72,7 +72,7 @@ function RenderMessage({ content }: { content: string }) {
 }
 
 export default function AIChat() {
-  const { messages, addMessage, isThinking, setThinking, aiStatus } = useStore()
+  const { messages, addMessage, setMessages, clearMessages, isThinking, setThinking, aiStatus } = useStore()
   const [input, setInput] = useState('')
   const [sessionId, setSessionId] = useState(() => newSessionId())
   const [sessions, setSessions] = useState<Session[]>([])
@@ -106,9 +106,8 @@ export default function AIChat() {
   const startNewSession = useCallback(() => {
     setSessionId(newSessionId())
     setToolsUsed([])
-    // Clear messages from store for new session feel
-    // (messages persist in store so we use a local clear trick via key)
-  }, [])
+    clearMessages()
+  }, [clearMessages])
 
   const send = async (msg?: string) => {
     const text = (msg || input).trim()
@@ -194,7 +193,34 @@ export default function AIChat() {
               )}
               {sessions.map(s => (
                 <button key={s.sessionId}
-                  onClick={() => setSessionId(s.sessionId)}
+                  onClick={async () => {
+                    setSessionId(s.sessionId)
+                    setThinking(true)
+                    try {
+                      const res = await fetch(`${API}/api/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: 'LOAD_HISTORY', session_id: s.sessionId, save: false })
+                      })
+                      const data = await res.json()
+                      // The backend returns history in its internal format, we need to map it back
+                      if (data.history) {
+                        setMessages(data.history.map((m: any) => ({
+                          id: Math.random().toString(),
+                          role: m.role === 'assistant' ? 'ai' : m.role,
+                          content: m.content,
+                          timestamp: m.timestamp || Date.now()
+                        })))
+                      } else if (data.reply && data.reply !== 'LOAD_HISTORY_ACK') {
+                        // If it's not a special ack, it might be the actual history or a message
+                        // But based on our backend logic, we should probably add a specific history loader
+                      }
+                    } catch (e) {
+                      console.error("Failed to load session", e)
+                    } finally {
+                      setThinking(false)
+                    }
+                  }}
                   className={`w-full text-left px-3 py-2 hover:bg-white/5 transition-colors border-b border-bg-border/50 group ${s.sessionId === sessionId ? 'bg-white/5' : ''}`}>
                   <p className="text-white text-[11px] truncate leading-tight">{s.title || 'Untitled session'}</p>
                   <div className="flex items-center justify-between mt-0.5">

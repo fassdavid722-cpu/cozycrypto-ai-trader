@@ -88,8 +88,10 @@ export default function App() {
       const res = await fetch(`${API}/api/settings`)
       if (res.ok) {
         const data = await res.json()
-        const allConnected = data.connected?.bitget && data.connected?.groq
-        setAiStatus(allConnected ? 'online' : 'learning')
+        const conn = data.connections || {}
+        if (conn.bitget && conn.groq) setAiStatus('trading')
+        else if (conn.groq) setAiStatus('learning')
+        else setAiStatus('online')
       }
     } catch {}
   }
