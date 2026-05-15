@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0A0A0F;
+  color: #FFFFFF;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #111118; }
+::-webkit-scrollbar-thumb { background: #2A2A3A; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #F4C542; }
+
+.glass {
+  background: rgba(22, 22, 30, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.glow-gold { box-shadow: 0 0 20px rgba(244, 197, 66, 0.15); }
+.glow-green { box-shadow: 0 0 20px rgba(0, 212, 161, 0.15); }
+.glow-red { box-shadow: 0 0 20px rgba(255, 71, 87, 0.15); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-track { animation: ticker 30s linear infinite; }
+
+.ai-thinking {
+  background: linear-gradient(90deg, #6C8EFF, #F4C542, #00D4A1, #6C8EFF);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 2s linear infinite;
+}
+@keyframes shine {
+  to { background-position: 200% center; }
+}
+
+.candlestick-logo {
+  position: relative;
+  width: 32px;
+  height: 32px;
+}
