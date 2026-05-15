@@ -373,7 +373,9 @@ async function callAI(model: string, messages: any[], useTools: boolean): Promis
 
   for (const key of [GROQ_KEY, GROQ_KEY2].filter(Boolean)) {
     try {
-      const reqBody: any = { model, messages, max_tokens: 1400, temperature: 0.7 }
+      // Ensure all message content are strings
+      const sanitizedMessages = messages.map(m => ({ ...m, content: String(m.content || '') }))
+      const reqBody: any = { model, messages: sanitizedMessages, max_tokens: 1400, temperature: 0.7 }
       if (useTools) { reqBody.tools = TOOLS; reqBody.tool_choice = 'auto'; reqBody.max_tokens = 900; reqBody.temperature = 0.3 }
 
       const r1 = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -397,7 +399,7 @@ async function callAI(model: string, messages: any[], useTools: boolean): Promis
         // Second pass — interpret results, full reply
         const r2 = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method:'POST', headers:{'Authorization':`Bearer ${key}`,'Content-Type':'application/json'},
-          body: JSON.stringify({ model, messages:[...toolMsgs,...toolResults], max_tokens:1400, temperature:0.7 }),
+          body: JSON.stringify({ model, messages:[...toolMsgs,...toolResults].map(m => ({ ...m, content: String(m.content || '') })), max_tokens:1400, temperature:0.7 }),
           signal: AbortSignal.timeout(28000)
         })
         if (r2.ok) { const d2=await r2.json() as any; const reply=d2.choices?.[0]?.message?.content; if(reply) return { reply, toolsUsed } }
@@ -541,8 +543,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const messages = [
     { role:'system', content: SYSTEM },
-    ...sessionHistory.slice(-20).map((m:any) => ({ role: m.role==='ai'?'assistant':m.role, content: m.content, timestamp: m.timestamp })),
-    { role:'user', content: message }
+    ...sessionHistory.slice(-20).map((m:any) => ({ role: m.role==='ai'?'assistant':m.role, content: String(m.content || ''), timestamp: m.timestamp })),
+    { role:'user', content: String(message || '') }
   ]
 
   const { reply, toolsUsed } = await callAI(model, messages, useTools)
