@@ -16,122 +16,118 @@ function authHeaders(method: string, path: string, body = '') {
            'Content-Type': 'application/json', 'locale': 'en-US' }
 }
 
-async function getAssets() {
+async function apiFetch(path: string) {
+  const r = await fetch(BASE + path, { headers: authHeaders('GET', path) as any, signal: AbortSignal.timeout(10000) })
+  if (!r.ok) return null
+  return r.json() as any
+}
+
+async function getSpotAssets() {
   if (!API_KEY) return []
   try {
-    const path = '/api/v2/spot/account/assets'
-    const r = await fetch(BASE + path, { headers: authHeaders('GET', path) as any, signal: AbortSignal.timeout(10000) })
-    if (!r.ok) return []
-    const d = await r.json() as any
-    return (d.data || []).filter((a: any) => parseFloat(a.available || '0') > 0 || parseFloat(a.frozen || '0') > 0)
+    const d = await apiFetch('/api/v2/spot/account/assets')
+    return (d?.data || []).filter((a: any) => parseFloat(a.available || '0') + parseFloat(a.frozen || '0') > 0.000001)
+  } catch { return [] }
+}
+
+async function getFuturesAccount() {
+  if (!API_KEY) return null
+  try {
+    const d = await apiFetch('/api/v2/mix/account/accounts?productType=USDT-FUTURES')
+    if (!d?.data) return null
+    const acc = Array.isArray(d.data) ? d.data.find((a: any) => a.marginCoin === 'USDT') : d.data
+    return acc || null
+  } catch { return null }
+}
+
+async function getFuturesPositions() {
+  if (!API_KEY) return []
+  try {
+    const d = await apiFetch('/api/v2/mix/position/all-position?productType=USDT-FUTURES&marginCoin=USDT')
+    return (d?.data || []).filter((p: any) => parseFloat(p.total || '0') > 0)
   } catch { return [] }
 }
 
 async function getOpenOrders() {
   if (!API_KEY) return []
   try {
-    const path = '/api/v2/spot/trade/unfilled-orders?limit=20'
-    const r = await fetch(BASE + path, { headers: authHeaders('GET', path) as any, signal: AbortSignal.timeout(10000) })
-    if (!r.ok) return []
-    const d = await r.json() as any
-    return d.data || []
+    const d = await apiFetch('/api/v2/spot/trade/unfilled-orders?limit=20')
+    return d?.data || []
   } catch { return [] }
 }
 
 async function getOrderHistory() {
   if (!API_KEY) return []
   try {
-    const path = '/api/v2/spot/trade/history-orders?limit=50'
-    const r = await fetch(BASE + path, { headers: authHeaders('GET', path) as any, signal: AbortSignal.timeout(10000) })
-    if (!r.ok) return []
-    const d = await r.json() as any
-    return d.data || []
+    const d = await apiFetch('/api/v2/spot/trade/history-orders?limit=20')
+    return d?.data || []
   } catch { return [] }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   if (!API_KEY) {
     return res.status(200).json({
       connected: false,
-      message: 'No Bitget API keys configured. Add BITGET_API_KEY, BITGET_SECRET_KEY, BITGET_PASSPHRASE to environment variables.',
-      balance: 0,
-      portfolioValue: 0,
-      portfolioChange: 0,
-      assets: [],
-      openOrders: [],
-      recentTrades: [],
+      message: 'No Bitget API keys configured.',
+      balance: 0, portfolioValue: 0, value: 0, change: 0,
+      assets: [], openOrders: [], trades: [], positions: [],
+      timestamp: Date.now(),
     })
   }
 
-  const [assets, openOrders, history] = await Promise.all([getAssets(), getOpenOrders(), getOrderHistory()])
+  const [spotAssets, futuresAcc, positions, openOrders, history] = await Promise.all([
+    getSpotAssets(), getFuturesAccount(), getFuturesPositions(), getOpenOrders(), getOrderHistory()
+  ])
 
-  // Fetch prices for non-stable assets to calculate total value
-  const stables = ['USDT', 'USDC', 'BUSD', 'TUSD', 'DAI']
-  const nonStables = assets.filter((a: any) => !stables.includes(a.coinName) && (parseFloat(a.available) + parseFloat(a.frozen)) > 0)
-  
-  const priceMap: Record<string, number> = { 'USDT': 1, 'USDC': 1, 'BUSD': 1, 'TUSD': 1, 'DAI': 1 }
+  // Fetch live prices for spot assets
+  const stables = new Set(['USDT','USDC','BUSD','TUSD','DAI'])
+  const priceMap: Record<string, number> = { USDT:1, USDC:1, BUSD:1, TUSD:1, DAI:1 }
   try {
-    const tickerRes = await fetch(`${BASE}/api/v2/spot/market/tickers`, { signal: AbortSignal.timeout(5000) })
-    if (tickerRes.ok) {
-      const tickerData = await tickerRes.json() as any
-      (tickerData.data || []).forEach((t: any) => {
-        if (t.symbol.endsWith('USDT')) {
-          const coin = t.symbol.replace('USDT', '')
-          priceMap[coin] = parseFloat(t.lastPr)
-        }
-      })
+    const r = await fetch(`${BASE}/api/v2/spot/market/tickers`, { signal: AbortSignal.timeout(6000) })
+    if (r.ok) {
+      const d = await r.json() as any
+      for (const t of (d.data || [])) {
+        if (t.symbol.endsWith('USDT')) priceMap[t.symbol.replace('USDT','')] = parseFloat(t.lastPr)
+      }
     }
-  } catch (e) {
-    console.error('Price fetch failed, using stables only for valuation')
-  }
+  } catch {}
 
-  let totalValue = 0
-  const assetList: any[] = []
-
-  for (const a of assets) {
-    const qty = parseFloat(a.available || '0') + parseFloat(a.frozen || '0')
-    if (qty < 0.000001) continue
+  let spotValue = 0
+  const assetList = spotAssets.map((a: any) => {
+    const qty = parseFloat(a.available||'0') + parseFloat(a.frozen||'0')
     const price = priceMap[a.coinName] || 0
     const usdVal = qty * price
-    totalValue += usdVal
-    assetList.push({ 
-      coin: a.coinName, 
-      available: parseFloat(a.available || '0'), 
-      frozen: parseFloat(a.frozen || '0'), 
-      usdValue: parseFloat(usdVal.toFixed(2)) 
-    })
-  }
+    spotValue += usdVal
+    return { coin: a.coinName, available: parseFloat(a.available||'0'), frozen: parseFloat(a.frozen||'0'), usdValue: parseFloat(usdVal.toFixed(2)), price }
+  }).filter((a: any) => a.usdValue > 0.01 || !stables.has(a.coin))
 
-  const trades = history.slice(0, 20).map((o: any) => {
-    const side = o.side?.toLowerCase()
-    const price = parseFloat(o.priceAvg || o.price || '0')
-    const qty = parseFloat(o.baseVolume || o.size || '0')
-    return { 
-      id: o.orderId,
-      symbol: o.symbol, 
-      side, 
-      price, 
-      quantity: qty, 
-      total: (price * qty).toFixed(2),
-      status: o.status === 'filled' ? 'closed' : 'open', 
-      timestamp: parseInt(o.cTime),
-      reason: 'Bitget Order'
-    }
-  })
+  const futuresBalance = parseFloat(futuresAcc?.usdtEquity || futuresAcc?.available || '0')
+  const totalValue = spotValue + futuresBalance
 
-  // Match frontend App.tsx expectations: { value, change, history, balance }
-  return res.status(200).json({
+  res.json({
     connected: true,
+    balance: assetList.find((a:any)=>a.coin==='USDT')?.available || 0,
     value: parseFloat(totalValue.toFixed(2)),
-    change: 0, 
-    history: [], // Placeholder for chart
-    balance: assetList.find(a => a.coin === 'USDT')?.available || 0,
+    portfolioValue: parseFloat(totalValue.toFixed(2)),
+    spotValue: parseFloat(spotValue.toFixed(2)),
+    futuresBalance,
+    change: 0,
     assets: assetList,
+    positions: positions.map((p: any) => ({
+      symbol: p.symbol,
+      side: p.holdSide,
+      size: parseFloat(p.total||'0'),
+      entryPrice: parseFloat(p.openPriceAvg||'0'),
+      markPrice: parseFloat(p.markPrice||'0'),
+      pnl: parseFloat(p.unrealizedPL||'0'),
+      leverage: parseInt(p.leverage||'10'),
+    })),
     openOrders: openOrders.slice(0, 10),
-    trades: trades,
+    trades: history.slice(0, 20),
     timestamp: Date.now(),
   })
 }
