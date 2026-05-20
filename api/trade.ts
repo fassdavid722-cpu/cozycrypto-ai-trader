@@ -38,23 +38,23 @@ async function getPrice(symbol: string): Promise<number> {
 async function getUSDTBalance(): Promise<number> {
   if (!API_KEY) return 0
   try {
-    const path = '/api/v2/spot/account/assets'
+    const path = '/api/v2/mix/account/accounts?productType=USDT-FUTURES'
     const r = await fetch(BASE + path, { headers: authHeaders('GET', path) as any, signal: AbortSignal.timeout(8000) })
     if (!r.ok) return 0
     const d = await r.json() as any
-    const usdt = (d.data || []).find((a: any) => a.coinName === 'USDT')
-    return parseFloat(usdt?.available || '0')
+    // futures account returns marginCoin balance
+    const acc = Array.isArray(d.data) ? d.data.find((a:any)=>a.marginCoin==='USDT') : d.data
+    return parseFloat(acc?.available || acc?.usdtEquity || '0')
   } catch { return 0 }
 }
 
 async function placeOrder(symbol: string, side: 'buy' | 'sell', size: string, sl?: string, tp?: string): Promise<any> {
-  const path = '/api/v2/spot/trade/place-order'
-  const bodyObj: any = { symbol, side, orderType: 'market', force: 'gtc', size }
+  const path = '/api/v2/mix/order/place-order'
+  const bodyObj: any = { symbol: symbol + '_UMCBL', productType: 'USDT-FUTURES', marginCoin: 'USDT', side: side === 'buy' ? 'open_long' : 'open_short', orderType: 'market', size }
   
   // Bitget supports preset SL/TP in the place-order call for some account types, 
   // but for spot market orders, it's often safer to use the 'presetStopLossPrice' and 'presetTakeProfitPrice' fields if supported.
-  if (sl) bodyObj.presetStopLossPrice = sl
-  if (tp) bodyObj.presetTakeProfitPrice = tp
+  // Note: for futures, attach SL/TP as separate stop orders after fill
 
   const body = JSON.stringify(bodyObj)
   const r = await fetch(BASE + path, {
