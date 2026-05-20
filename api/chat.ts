@@ -86,7 +86,7 @@ async function fetchMarketContext(): Promise<any> {
 
     return {
       btc: bitgetData?.data?.[0],
-      global: coingeckoData?.data,
+      global: coingeckoDataa?.data,
       timestamp: Date.now()
     }
   } catch (e) {
@@ -140,7 +140,7 @@ function formatContextForAI(context: PageContext): string {
     contextStr += `  • Balance: $${context.portfolio.balance?.toFixed(2) || '0'}\n`
     contextStr += `  • USDT Available: $${context.portfolio.usdt?.toFixed(2) || '0'}\n`
     if (context.portfolio.assets?.length) {
-      contextStr += `  • Assets: ${context.portfolio.assets.map((a: any) => `${a.symbol}(${a.quantity})`).join(', ')}\n`
+      contextStr += `  • Assets: ${context.portfolio.assets.map((a: any) => `${a.coin || a.symbol}($${a.usdValue?.toFixed(0) || a.available})`).join(', ')}\n`
     }
   }
 
@@ -587,7 +587,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let sessionHistory = session_id ? await loadSession(session_id) : []
 
     // Build page context with internet access
-    const pageContext = await buildPageContext(session_id || 'default')
+    const host = req.headers.host || 'cozycrypto-ai-trader.vercel.app'
+    const protocol = host.includes('localhost') ? 'http' : 'https'
+    const pageContext = await buildPageContext(session_id || 'default', host, protocol)
     const contextStr = formatContextForAI(pageContext)
 
     // Map session history
@@ -605,10 +607,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const brainType = selectBrain(message)
     const useTools = needsTools(message)
 
-    const SYSTEM = `You are COZANET, an elite AI trading copilot with advanced analysis capabilities.
-You have access to real-time market data, technical analysis, and trading execution.
-You think strategically, analyze multi-timeframe confluence, and identify opportunities others miss.
-Always provide actionable insights and clear reasoning.`
+    const SYSTEM = `You are COZANET — an elite autonomous AI trading copilot built by Cozanet.
+You specialize in USDT-M Perpetual Futures trading on Bitget with 10x leverage.
+You have real-time access to live market data, technical indicators, portfolio state, and order books.
+
+Your trading methodology:
+- Smart Money Concepts (SMC): Order Blocks, Fair Value Gaps, Break of Structure, Change of Character
+- Multi-timeframe confluence (15m, 1H, 4H alignment required for high-confidence trades)
+- Risk management: 10x leverage, SL at key structure, TP at next liquidity zone
+- Always calculate: Entry, Stop Loss, Take Profit, Liquidation Price, R:R ratio
+- Confidence gate: only recommend trades above 65% confidence
+
+Response style:
+- Be concise, specific, and actionable — no fluff
+- For trade signals use this format: 🔥 SIGNAL: LONG/SHORT | Entry: $X | SL: $X | TP: $X | Liq: $X | R:R 1:X | Confidence: X%
+- For analysis: lead with the key finding, then supporting data
+- If asked about price, always fetch live data before responding${contextStr}`
 
     const messages = [
       { role: 'system', content: SYSTEM },
