@@ -1,76 +1,75 @@
 import React, { useState } from 'react'
-import { Search, Bell, Sparkles, ChevronDown } from 'lucide-react'
+import { Search, Bell, Settings, TrendingUp, TrendingDown } from 'lucide-react'
 import { useStore } from '@/store/useStore'
-import Logo from './Logo'
 
 export default function Topbar() {
-  const { alerts, isThinking } = useStore()
-  const unread = alerts.filter(a => !a.read).length
+  const { portfolioValue, portfolioChange, aiStatus, alerts } = useStore()
   const [search, setSearch] = useState('')
+  const unread = alerts.filter(a => !a.read).length
+
+  const statusColor = {
+    'online': 'text-green-trade',
+    'learning': 'text-gold',
+    'trading': 'text-blue-ai',
+    'offline': 'text-red-trade',
+  }[aiStatus] || 'text-text-muted'
 
   return (
-    <header className="h-14 bg-bg-secondary border-b border-bg-border flex items-center px-6 gap-4 shrink-0">
-      {/* Mobile logo */}
-      <div className="lg:hidden">
-        <Logo size={28} showText={false} />
-      </div>
+    <header className="h-16 bg-bg-secondary border-b border-bg-border flex items-center justify-between px-6 gap-4 shrink-0">
+      {/* Left: Search */}
 
-      {/* Page title area */}
-      <div className="hidden lg:flex flex-col leading-none">
-        <h1 className="text-white font-semibold text-base">Welcome back, Cozanet.</h1>
-        <p className="text-text-secondary text-xs">Your AI. Your edge. Your vision.</p>
-      </div>
-
-      {/* PRO badge */}
-      <span className="hidden lg:flex items-center px-2 py-0.5 bg-gold/10 border border-gold/30 rounded text-gold text-[10px] font-bold tracking-wider">
-        PRO
-      </span>
-
-      {/* Search */}
-      <div className="flex-1 max-w-sm ml-4">
+      <div className="flex-1 max-w-md">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
-            placeholder="Search anything..."
+            placeholder="Search symbols, strategies..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full bg-bg-card border border-bg-border rounded-lg pl-9 pr-12 py-1.5 text-sm text-white placeholder-text-muted focus:outline-none focus:border-gold/50 transition-colors"
+            className="w-full bg-bg-tertiary border border-bg-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-gold/50 transition-colors"
           />
-          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-text-muted font-mono bg-bg-border px-1 rounded">⌘K</kbd>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 ml-auto">
-        {/* AI Thinking indicator */}
-        {isThinking && (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-ai/10 rounded-full border border-blue-ai/20">
-            <Sparkles size={12} className="text-blue-ai animate-pulse" />
-            <span className="text-blue-ai text-xs font-mono">AI THINKING...</span>
+      {/* Center: Key Metrics */}
+      <div className="flex items-center gap-6">
+        {/* Portfolio Value */}
+        <div className="flex items-center gap-2">
+          <span className="text-text-muted text-xs uppercase tracking-wider">Portfolio</span>
+          <span className="text-white text-lg font-bold font-mono">
+            {portfolioValue > 0 ? `$${portfolioValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}
+          </span>
+          <div className={`flex items-center gap-1 ${portfolioChange >= 0 ? 'text-green-trade' : 'text-red-trade'}`}>
+            {portfolioChange >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+            <span className="text-xs font-mono">{portfolioChange >= 0 ? '+' : ''}{portfolioChange.toFixed(2)}%</span>
           </div>
-        )}
+        </div>
 
-        {/* Notifications */}
-        <button className="relative p-2 rounded-lg hover:bg-white/5 transition-colors">
-          <Bell size={18} className="text-text-secondary" />
-          {unread > 0 && (
-            <span className="absolute top-1 right-1 w-4 h-4 bg-gold rounded-full text-[9px] font-bold text-black flex items-center justify-center">
-              {unread}
-            </span>
-          )}
-        </button>
+        {/* Divider */}
+        <div className="w-px h-6 bg-bg-border" />
 
-        {/* AI sparkle */}
-        <button className="p-2 rounded-lg hover:bg-white/5 transition-colors">
-          <Sparkles size={18} className="text-text-secondary hover:text-gold transition-colors" />
-        </button>
-
-        {/* Avatar */}
-        <button className="flex items-center gap-2 p-1 rounded-lg hover:bg-white/5 transition-colors">
-          <div className="w-7 h-7 rounded-full bg-gold/20 border border-gold/40 flex items-center justify-center">
-            <span className="text-gold text-xs font-bold">C</span>
+        {/* AI Status */}
+        <div className="flex items-center gap-2">
+          <span className="text-text-muted text-xs uppercase tracking-wider">AI</span>
+          <div className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${statusColor} animate-pulse-dot`} />
+            <span className={`text-xs font-medium uppercase tracking-wider ${statusColor}`}>{aiStatus}</span>
           </div>
+        </div>
+      </div>
+
+      {/* Right: Actions */}
+      <div className="flex items-center gap-3">
+        <button className="p-2 hover:bg-bg-hover rounded-lg transition-colors text-text-secondary hover:text-gold relative">
+          <Bell size={18} />
+          {unread > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-trade rounded-full" />}
         </button>
+        <button className="p-2 hover:bg-bg-hover rounded-lg transition-colors text-text-secondary hover:text-gold">
+          <Settings size={18} />
+        </button>
+        <div className="w-8 h-8 rounded-full bg-gold/20 border border-gold/40 flex items-center justify-center text-gold text-xs font-bold">
+          C
+        </div>
       </div>
     </header>
   )
