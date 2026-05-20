@@ -61,10 +61,9 @@ interface PageContext {
 
 const contextCache: Map<string, PageContext> = new Map()
 
-async function fetchPortfolioContext(userId: string): Promise<any> {
+async function fetchPortfolioContext(userId: string, host: string, protocol: string): Promise<any> {
   try {
-    // Try to fetch from your portfolio API endpoint
-    const res = await fetch('https://cozycrypto-ai-trader.vercel.app/api/portfolio', {
+    const res = await fetch(`${protocol}://${host}/api/portfolio`, {
       signal: AbortSignal.timeout(3000)
     })
     if (res.ok) return await res.json()
@@ -96,9 +95,9 @@ async function fetchMarketContext(): Promise<any> {
   return {}
 }
 
-async function fetchWorkflowContext(): Promise<any> {
+async function fetchWorkflowContext(host: string, protocol: string): Promise<any> {
   try {
-    const res = await fetch('https://cozycrypto-ai-trader.vercel.app/api/workflows', {
+    const res = await fetch(`${protocol}://${host}/api/workflows`, {
       signal: AbortSignal.timeout(3000)
     })
     if (res.ok) return await res.json()
@@ -108,7 +107,7 @@ async function fetchWorkflowContext(): Promise<any> {
   return { workflows: [] }
 }
 
-async function buildPageContext(userId: string): Promise<PageContext> {
+async function buildPageContext(userId: string, host: string, protocol: string): Promise<PageContext> {
   // Check cache first
   const cached = contextCache.get(userId)
   if (cached && Date.now() - cached.timestamp < 30000) {
@@ -117,9 +116,9 @@ async function buildPageContext(userId: string): Promise<PageContext> {
 
   // Fetch all context in parallel
   const [portfolio, market, workflows] = await Promise.all([
-    fetchPortfolioContext(userId),
+    fetchPortfolioContext(userId, host, protocol),
     fetchMarketContext(),
-    fetchWorkflowContext()
+    fetchWorkflowContext(host, protocol)
   ])
 
   const context: PageContext = {
@@ -378,13 +377,15 @@ const TOOLS = [
 ]
 
 // ── Tool Execution ────────────────────────────────────────────────────────────
-async function executeTool(name: string, args: any): Promise<string> {
+async function executeTool(name: string, args: any, host: string, protocol: string): Promise<string> {
   try {
     switch (name) {
       case 'get_portfolio':
-        return JSON.stringify({ balance: 10000, assets: [], usdt: 5000, status: 'ok' })
+        const pRes = await fetch(`${protocol}://${host}/api/portfolio`)
+        return pRes.ok ? JSON.stringify(await pRes.json()) : JSON.stringify({ error: 'Failed to fetch portfolio' })
       case 'get_market_prices':
-        return JSON.stringify({ BTC: 45000, ETH: 2500, SOL: 150, status: 'ok' })
+        const mRes = await fetch(`${protocol}://${host}/api/market/tickers`)
+        return mRes.ok ? JSON.stringify(await mRes.json()) : JSON.stringify({ error: 'Failed to fetch market prices' })
       case 'analyze_symbol':
         const candles = await fetchCandles(args.symbol, '1H', 100)
         if (candles.length > 0) {
@@ -413,7 +414,9 @@ async function callAI(
   brainType: string,
   messages: any[],
   useTools: boolean,
-  contextStr: string
+  contextStr: string,
+  host: string,
+  protocol: string
 ): Promise<{ reply: string; toolsUsed: string[]; brain: string }> {
   const brain = BRAINS[brainType] || BRAINS.TRADE_BRAIN
   const toolsUsed: string[] = []
@@ -494,7 +497,7 @@ async function callAI(
             return {
               role: 'tool',
               tool_call_id: tc.id,
-              content: String(await executeTool(name, args))
+              content: String(await executeTool(name, args, host, protocol))
             }
           })
         )

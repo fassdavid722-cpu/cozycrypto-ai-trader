@@ -47,9 +47,16 @@ async function getUSDTBalance(): Promise<number> {
   } catch { return 0 }
 }
 
-async function placeOrder(symbol: string, side: 'buy' | 'sell', size: string): Promise<any> {
+async function placeOrder(symbol: string, side: 'buy' | 'sell', size: string, sl?: string, tp?: string): Promise<any> {
   const path = '/api/v2/spot/trade/place-order'
-  const body = JSON.stringify({ symbol, side, orderType: 'market', force: 'gtc', size })
+  const bodyObj: any = { symbol, side, orderType: 'market', force: 'gtc', size }
+  
+  // Bitget supports preset SL/TP in the place-order call for some account types, 
+  // but for spot market orders, it's often safer to use the 'presetStopLossPrice' and 'presetTakeProfitPrice' fields if supported.
+  if (sl) bodyObj.presetStopLossPrice = sl
+  if (tp) bodyObj.presetTakeProfitPrice = tp
+
+  const body = JSON.stringify(bodyObj)
   const r = await fetch(BASE + path, {
     method: 'POST',
     headers: authHeaders('POST', path, body) as any,
@@ -93,7 +100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const result = await placeOrder(sym, side, qty)
+    const result = await placeOrder(sym, side, qty, sl.toFixed(6), tp.toFixed(6))
     if (result.code !== '00000') {
       return res.status(400).json({ error: result.msg || 'Order failed', details: result })
     }

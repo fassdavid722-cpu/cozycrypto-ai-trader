@@ -135,8 +135,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const balance = await getBalance()
 
-  // 2. ANALYST BRAIN — deep SMC analysis
-  const analystPrompt = `You are an elite crypto analyst using Smart Money Concepts (SMC).
+  // 2. ADVANCED ANALYST BRAIN — SMC + Pattern Recognition + Sentiment
+  const analystPrompt = `You are an elite autonomous trading brain using Smart Money Concepts (SMC) and Advanced Pattern Recognition.
 
 LIVE MARKET DATA for ${symbol}:
 - Price: $${market.price}
@@ -150,12 +150,12 @@ LIVE MARKET DATA for ${symbol}:
 - Account Balance: $${balance.toFixed(2)} USDT
 
 Analyze using:
-1. Order Blocks (OB) — institutional accumulation/distribution zones
-2. Fair Value Gaps (FVG) — imbalance areas price will likely revisit
-3. Break of Structure (BOS) / Change of Character (CHoCH)
-4. Liquidity sweeps (stop hunts above highs/below lows)
-5. EMA trend confluence
-6. RSI divergence / overbought / oversold
+1. Institutional Order Blocks (OB) & Fair Value Gaps (FVG)
+2. Market Structure: BOS (Break of Structure) & CHoCH (Change of Character)
+3. Liquidity Analysis: Identify stop-hunt zones and liquidity pools
+4. Pattern Recognition: Identify high-probability setups (e.g., Wyckoff, Quasimodo)
+5. Confluence: Align EMA trend, RSI divergence, and Sentiment (Fear/Greed)
+6. Continuous Learning: Adapt bias based on recent 24h price action and volume spikes
 
 Output JSON only:
 {
@@ -166,8 +166,9 @@ Output JSON only:
   "take_profit": price,
   "rr_ratio": "1:X",
   "size_usdt": amount (max ${(balance * MAX_PCT/100).toFixed(2)} USDT),
-  "reasoning": "brief SMC context",
+  "reasoning": "detailed SMC + pattern context",
   "key_levels": { "support": price, "resistance": price },
+  "patterns_detected": ["list of identified patterns"],
   "action": "buy|sell|wait"
 }`
 

@@ -68,39 +68,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const [assets, openOrders, history] = await Promise.all([getAssets(), getOpenOrders(), getOrderHistory()])
 
-  // Calculate total USD value (USDT + stables treated as $1)
-  const stables = ['USDT','USDC','BUSD','TUSD','DAI']
+  // Fetch prices for non-stable assets to calculate total value
+  const stables = ['USDT', 'USDC', 'BUSD', 'TUSD', 'DAI']
+  const nonStables = assets.filter((a: any) => !stables.includes(a.coinName) && (parseFloat(a.available) + parseFloat(a.frozen)) > 0)
+  
+  const priceMap: Record<string, number> = { 'USDT': 1, 'USDC': 1, 'BUSD': 1, 'TUSD': 1, 'DAI': 1 }
+  try {
+    const tickerRes = await fetch(`${BASE}/api/v2/spot/market/tickers`, { signal: AbortSignal.timeout(5000) })
+    if (tickerRes.ok) {
+      const tickerData = await tickerRes.json() as any
+      (tickerData.data || []).forEach((t: any) => {
+        if (t.symbol.endsWith('USDT')) {
+          const coin = t.symbol.replace('USDT', '')
+          priceMap[coin] = parseFloat(t.lastPr)
+        }
+      })
+    }
+  } catch (e) {
+    console.error('Price fetch failed, using stables only for valuation')
+  }
+
   let totalValue = 0
   const assetList: any[] = []
 
   for (const a of assets) {
     const qty = parseFloat(a.available || '0') + parseFloat(a.frozen || '0')
     if (qty < 0.000001) continue
-    const isStable = stables.includes(a.coinName)
-    const usdVal = isStable ? qty : 0  // Non-stables need price lookup — skip for now to stay fast
-    totalValue += isStable ? qty : 0
-    assetList.push({ coin: a.coinName, available: parseFloat(a.available || '0'), frozen: parseFloat(a.frozen || '0'), usdValue: isStable ? qty : null })
+    const price = priceMap[a.coinName] || 0
+    const usdVal = qty * price
+    totalValue += usdVal
+    assetList.push({ 
+      coin: a.coinName, 
+      available: parseFloat(a.available || '0'), 
+      frozen: parseFloat(a.frozen || '0'), 
+      usdValue: parseFloat(usdVal.toFixed(2)) 
+    })
   }
 
-  // Calculate P&L from history
-  let totalPnl = 0
   const trades = history.slice(0, 20).map((o: any) => {
     const side = o.side?.toLowerCase()
     const price = parseFloat(o.priceAvg || o.price || '0')
     const qty = parseFloat(o.baseVolume || o.size || '0')
-    const total = price * qty
-    return { symbol: o.symbol, side, price, quantity: qty, total: total.toFixed(2),
-             status: o.status, time: o.cTime, orderId: o.orderId }
+    return { 
+      id: o.orderId,
+      symbol: o.symbol, 
+      side, 
+      price, 
+      quantity: qty, 
+      total: (price * qty).toFixed(2),
+      status: o.status === 'filled' ? 'closed' : 'open', 
+      timestamp: parseInt(o.cTime),
+      reason: 'Bitget Order'
+    }
   })
 
+  // Match frontend App.tsx expectations: { value, change, history, balance }
   return res.status(200).json({
     connected: true,
+    value: parseFloat(totalValue.toFixed(2)),
+    change: 0, 
+    history: [], // Placeholder for chart
     balance: assetList.find(a => a.coin === 'USDT')?.available || 0,
-    portfolioValue: parseFloat(totalValue.toFixed(2)),
-    portfolioChange: 0,  // Would need historical snapshot to compute
     assets: assetList,
     openOrders: openOrders.slice(0, 10),
-    recentTrades: trades,
+    trades: trades,
     timestamp: Date.now(),
   })
 }
