@@ -28,7 +28,7 @@ interface Brain {
 const BRAINS: Record<string, Brain> = {
   MATH_BRAIN: {
     name: 'Math Brain',
-    model: 'mixtral-8x7b-32768',
+    model: 'llama-3.3-70b-versatile',
     temperature: 0.3,
     maxTokens: 1200,
     specialization: 'calculations, position sizing, risk analysis'
@@ -42,7 +42,7 @@ const BRAINS: Record<string, Brain> = {
   },
   TRADE_BRAIN: {
     name: 'Trade Brain',
-    model: 'llama-3.1-70b-versatile',
+    model: 'llama-3.3-70b-versatile',
     temperature: 0.7,
     maxTokens: 1400,
     specialization: 'market analysis, trading strategy, technical analysis'
@@ -464,7 +464,24 @@ async function callAI(
       console.log(`[${brain.name}] Response status: ${r1.status}`)
 
       if (r1.status === 429) {
-        console.log(`[${brain.name}] Rate limited, trying next key...`)
+        console.log(`[${brain.name}] Rate limited on ${brain.model}, trying fallback model...`)
+        // Try fast fallback model with same key before switching keys
+        try {
+          const fallbackR = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages: sanitizedMessages, max_tokens: 800, temperature: 0.7 }),
+            signal: AbortSignal.timeout(25000)
+          })
+          if (fallbackR.ok) {
+            const fb = await fallbackR.json() as any
+            const fbReply = fb.choices?.[0]?.message?.content
+            if (fbReply) {
+              console.log(`[${brain.name}] Fallback model succeeded`)
+              return { reply: fbReply, toolsUsed, brain: brain.name + ' (fast)' }
+            }
+          }
+        } catch {}
         continue
       }
 
@@ -631,7 +648,7 @@ Response style:
     ]
 
     // Call the selected brain
-    const { reply, toolsUsed, brain } = await callAI(brainType, messages, useTools, contextStr)
+    const { reply, toolsUsed, brain } = await callAI(brainType, messages, useTools, contextStr, host, protocol)
 
     // Save updated session
     if (save && session_id) {
