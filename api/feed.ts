@@ -2,106 +2,112 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 async function getFearGreed() {
   try {
-    const r = await fetch('https://api.alternative.me/fng/?limit=3', { signal: AbortSignal.timeout(6000) })
+    const r = await fetch('https://api.alternative.me/fng/?limit=1', { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) throw new Error(`FNG ${r.status}`)
     const d = await r.json() as any
-    return d.data?.map((i: any) => ({
-      value: parseInt(i.value),
-      label: i.value_classification,
-      date: i.timestamp
-    })) || []
-  } catch { return [] }
+    const item = d.data?.[0]
+    if (!item) throw new Error('No FNG data')
+    return {
+      value: parseInt(item.value),
+      label: item.value_classification,
+      date: item.timestamp
+    }
+  } catch {
+    return { value: 50, label: 'Neutral', date: '' }
+  }
 }
 
-async function getCryptoNews() {
+async function getGlobalMarket() {
   try {
-    // CoinGecko trending + news via public API
-    const [trendR, globalR] = await Promise.all([
-      fetch('https://api.coingecko.com/api/v3/search/trending', { signal: AbortSignal.timeout(6000) }),
-      fetch('https://api.coingecko.com/api/v3/global', { signal: AbortSignal.timeout(6000) })
-    ])
-    const trend = await trendR.json() as any
-    const global = await globalR.json() as any
+    const r = await fetch('https://api.coingecko.com/api/v3/global', { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) throw new Error(`CG global ${r.status}`)
+    const d = await r.json() as any
+    const g = d.data || {}
+    return {
+      market_cap_usd: g.total_market_cap?.usd || 0,
+      volume_24h: g.total_volume?.usd || 0,
+      btc_dominance: parseFloat((g.market_cap_percentage?.btc || 0).toFixed(1)),
+      eth_dominance: parseFloat((g.market_cap_percentage?.eth || 0).toFixed(1)),
+      market_cap_change_24h: parseFloat((g.market_cap_change_percentage_24h_usd || 0).toFixed(2)),
+      active_coins: g.active_cryptocurrencies || 0,
+    }
+  } catch {
+    return { market_cap_usd: 0, volume_24h: 0, btc_dominance: 0, eth_dominance: 0, market_cap_change_24h: 0, active_coins: 0 }
+  }
+}
 
-    const trending = (trend.coins || []).slice(0, 7).map((c: any) => ({
+async function getTrending() {
+  try {
+    const r = await fetch('https://api.coingecko.com/api/v3/search/trending', { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) throw new Error(`CG trending ${r.status}`)
+    const d = await r.json() as any
+    return (d.coins || []).slice(0, 7).map((c: any) => ({
       name: c.item.name,
       symbol: c.item.symbol,
       rank: c.item.market_cap_rank,
       score: c.item.score,
       thumb: c.item.thumb,
-      price_btc: c.item.price_btc,
     }))
-
-    const globalData = global.data || {}
-    return {
-      trending,
-      global: {
-        market_cap_usd: globalData.total_market_cap?.usd,
-        volume_24h: globalData.total_volume?.usd,
-        btc_dominance: globalData.market_cap_percentage?.btc?.toFixed(1),
-        eth_dominance: globalData.market_cap_percentage?.eth?.toFixed(1),
-        market_cap_change_24h: globalData.market_cap_change_percentage_24h_usd?.toFixed(2),
-        active_coins: globalData.active_cryptocurrencies,
-      }
-    }
-  } catch { return { trending: [], global: {} } }
+  } catch { return [] }
 }
 
 async function getTopMovers() {
   try {
+    // Use Bitget as primary — more reliable on Vercel than CoinGecko
     const r = await fetch(
-      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=percent_change_24h_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h',
+      'https://api.bitget.com/api/v2/spot/market/tickers',
       { signal: AbortSignal.timeout(8000) }
     )
-    if (!r.ok) return []
+    if (!r.ok) throw new Error(`Bitget tickers ${r.status}`)
     const d = await r.json() as any
-    return d.map((c: any) => ({
-      id: c.id,
-      symbol: c.symbol.toUpperCase(),
-      name: c.name,
-      price: c.current_price,
-      change_24h: c.price_change_percentage_24h?.toFixed(2),
-      volume: c.total_volume,
-      market_cap: c.market_cap,
-      image: c.image,
-    }))
-  } catch { return [] }
-}
+    const items: any[] = d.data || []
 
-async function getLosers() {
-  try {
-    const r = await fetch(
-      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=percent_change_24h_asc&per_page=5&page=1&sparkline=false',
-      { signal: AbortSignal.timeout(8000) }
-    )
-    if (!r.ok) return []
-    const d = await r.json() as any
-    return d.map((c: any) => ({
-      symbol: c.symbol.toUpperCase(),
-      name: c.name,
-      price: c.current_price,
-      change_24h: c.price_change_percentage_24h?.toFixed(2),
-    }))
-  } catch { return [] }
+    // Filter USDT pairs with valid data
+    const usdtPairs = items
+      .filter((t: any) => t.symbol.endsWith('USDT') && parseFloat(t.lastPr || '0') > 0 && parseFloat(t.open24h || '0') > 0)
+      .map((t: any) => {
+        const price = parseFloat(t.lastPr)
+        const open = parseFloat(t.open24h)
+        const change = ((price - open) / open) * 100
+        return {
+          symbol: t.symbol.replace('USDT', ''),
+          price,
+          change_24h: parseFloat(change.toFixed(2)),
+          volume: parseFloat(t.quoteVolume || '0'),
+        }
+      })
+
+    const gainers = [...usdtPairs].sort((a, b) => b.change_24h - a.change_24h).slice(0, 5)
+    const losers  = [...usdtPairs].sort((a, b) => a.change_24h - b.change_24h).slice(0, 5)
+    return { gainers, losers }
+  } catch {
+    return { gainers: [], losers: [] }
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
+  if (req.method === 'OPTIONS') return res.status(200).end()
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120')
 
-  const [fearGreed, cryptoData, gainers, losers] = await Promise.all([
+  const [fearGreed, globalMarket, trending, movers] = await Promise.all([
     getFearGreed(),
-    getCryptoNews(),
+    getGlobalMarket(),
+    getTrending(),
     getTopMovers(),
-    getLosers(),
   ])
 
   res.json({
     timestamp: new Date().toISOString(),
-    fear_greed: fearGreed,
-    global_market: cryptoData.global,
-    trending: cryptoData.trending,
-    top_gainers: gainers,
-    top_losers: losers,
+    fearGreed,          // { value, label, date }
+    fear_greed: fearGreed, // alias for backwards compat
+    globalMarket,       // { market_cap_usd, btc_dominance, ... }
+    global_market: globalMarket,
+    trending,           // [{ name, symbol, rank, ... }]
+    topGainers: movers.gainers,
+    top_gainers: movers.gainers,
+    topLosers: movers.losers,
+    top_losers: movers.losers,
     sources: ['alternative.me', 'coingecko.com', 'bitget.com']
   })
 }
