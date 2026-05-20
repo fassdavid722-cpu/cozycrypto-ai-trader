@@ -4,33 +4,59 @@ const GROQ_KEY  = process.env.GROQ_API_KEY  || ''
 const GROQ_KEY2 = process.env.GROQ_API_KEY_2 || ''
 const BITGET    = 'https://api.bitget.com'
 
-async function getCandles(symbol: string, granularity: string, limit = 100): Promise<number[][]> {
+const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'mixtral-8x7b-32768']
+
+async function getCandles(symbol: string, granularity: string, limit = 100) {
   try {
     const sym = symbol.replace('/', '').toUpperCase()
     const url = `${BITGET}/api/v2/spot/market/candles?symbol=${sym}&granularity=${granularity}&limit=${limit}`
     const r = await fetch(url, { signal: AbortSignal.timeout(8000) })
     if (!r.ok) return []
     const d = await r.json() as any
-    return (d.data || []).map((c: string[]) => [
-      parseInt(c[0]), parseFloat(c[1]), parseFloat(c[2]),
-      parseFloat(c[3]), parseFloat(c[4]), parseFloat(c[5])
-    ])
+    return ((d.data || []) as string[][]).map(c => ({
+      time: parseInt(c[0]), open: parseFloat(c[1]),
+      high: parseFloat(c[2]), low: parseFloat(c[3]),
+      close: parseFloat(c[4]), vol: parseFloat(c[5])
+    })).reverse()
   } catch { return [] }
+}
+
+async function getTicker(symbol: string) {
+  try {
+    const sym = symbol.replace('/', '').toUpperCase()
+    const r = await fetch(`${BITGET}/api/v2/spot/market/tickers?symbol=${sym}`, { signal: AbortSignal.timeout(6000) })
+    if (!r.ok) return null
+    const d = await r.json() as any
+    const t = d.data?.[0]
+    if (!t) return null
+    return {
+      price: parseFloat(t.lastPr || '0'),
+      change24h: parseFloat(t.changeUtc24h || '0'),
+      high24h: parseFloat(t.high24h || '0'),
+      low24h: parseFloat(t.low24h || '0'),
+      volume24h: parseFloat(t.quoteVolume || '0'),
+    }
+  } catch { return null }
+}
+
+async function getFearGreed() {
+  try {
+    const r = await fetch('https://api.alternative.me/fng/?limit=1', { signal: AbortSignal.timeout(5000) })
+    if (!r.ok) return { value: 50, label: 'Neutral' }
+    const d = await r.json() as any
+    return { value: parseInt(d.data?.[0]?.value || '50'), label: d.data?.[0]?.value_classification || 'Neutral' }
+  } catch { return { value: 50, label: 'Neutral' } }
 }
 
 function calcRSI(closes: number[], period = 14): number {
   if (closes.length < period + 1) return 50
   let gains = 0, losses = 0
   for (let i = closes.length - period; i < closes.length; i++) {
-    const diff = closes[i] - closes[i - 1]
-    if (diff > 0) gains += diff
-    else losses += Math.abs(diff)
+    const d = closes[i] - closes[i - 1]
+    if (d > 0) gains += d; else losses += Math.abs(d)
   }
-  const avgGain = gains / period
-  const avgLoss = losses / period
-  if (avgLoss === 0) return 100
-  const rs = avgGain / avgLoss
-  return parseFloat((100 - 100 / (1 + rs)).toFixed(2))
+  const avgG = gains / period, avgL = losses / period
+  return parseFloat((100 - 100 / (1 + avgG / (avgL || 0.001))).toFixed(2))
 }
 
 function calcEMA(closes: number[], period: number): number {
@@ -41,132 +67,201 @@ function calcEMA(closes: number[], period: number): number {
   return parseFloat(ema.toFixed(6))
 }
 
-function calcMACD(closes: number[]): { macd: number; signal: number; histogram: number } {
-  const ema12 = calcEMA(closes, 12)
-  const ema26 = calcEMA(closes, 26)
-  const macd  = ema12 - ema26
-  // Simplified signal line
-  const signal = macd * 0.85
-  return { macd: parseFloat(macd.toFixed(6)), signal: parseFloat(signal.toFixed(6)), histogram: parseFloat((macd - signal).toFixed(6)) }
+function calcMACD(closes: number[]) {
+  // Build EMA12 and EMA26 series for proper signal line
+  const k12 = 2 / 13, k26 = 2 / 27, k9 = 2 / 10
+  let ema12 = closes.slice(0, 12).reduce((a,b)=>a+b,0)/12
+  let ema26 = closes.slice(0, 26).reduce((a,b)=>a+b,0)/26
+  const macdLine: number[] = []
+  for (let i = Math.max(12,26); i < closes.length; i++) {
+    ema12 = closes[i]*k12 + ema12*(1-k12)
+    ema26 = closes[i]*k26 + ema26*(1-k26)
+    macdLine.push(ema12-ema26)
+  }
+  let signal = macdLine.slice(0,9).reduce((a,b)=>a+b,0)/Math.min(9,macdLine.length)
+  for (let i = 9; i < macdLine.length; i++) signal = macdLine[i]*k9 + signal*(1-k9)
+  const macd = macdLine[macdLine.length-1] || 0
+  return { macd: parseFloat(macd.toFixed(6)), signal: parseFloat(signal.toFixed(6)), histogram: parseFloat((macd-signal).toFixed(6)) }
 }
 
-function detectTrend(closes: number[]): string {
-  if (closes.length < 20) return 'neutral'
-  const recent = closes.slice(-5)
-  const older  = closes.slice(-20, -5)
-  const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length
-  const olderAvg  = older.reduce((a, b) => a + b, 0) / older.length
-  const pct = ((recentAvg - olderAvg) / olderAvg) * 100
-  if (pct > 1.5) return 'strong_uptrend'
-  if (pct > 0.3) return 'uptrend'
-  if (pct < -1.5) return 'strong_downtrend'
-  if (pct < -0.3) return 'downtrend'
-  return 'sideways'
-}
-
-async function callGroq(model: string, key: string, prompt: string): Promise<string> {
-  const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: 'You are an elite crypto technical analyst specializing in SMC (Smart Money Concepts). Be concise, data-driven, and actionable.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 800,
-      temperature: 0.4,
-    }),
-    signal: AbortSignal.timeout(20000),
+function calcATR(candles: any[], p = 14) {
+  if (candles.length < 2) return 0
+  const trs = candles.slice(1).map((c: any, i: number) => {
+    const prev = candles[i]
+    return Math.max(c.high - c.low, Math.abs(c.high - prev.close), Math.abs(c.low - prev.close))
   })
-  if (!r.ok) throw new Error(`Groq ${r.status}`)
-  const d = await r.json() as any
-  return d.choices?.[0]?.message?.content || ''
+  return parseFloat((trs.slice(-p).reduce((a:number,b:number)=>a+b,0) / Math.min(p,trs.length)).toFixed(6))
+}
+
+function calcBB(closes: number[], p = 20) {
+  const sl = closes.slice(-p)
+  const m = sl.reduce((a,b)=>a+b,0)/sl.length
+  const std = Math.sqrt(sl.reduce((s,x)=>s+Math.pow(x-m,2),0)/sl.length)
+  return { upper: parseFloat((m+2*std).toFixed(2)), middle: parseFloat(m.toFixed(2)), lower: parseFloat((m-2*std).toFixed(2)) }
+}
+
+function detectOBs(candles: any[]) {
+  const obs: string[] = []
+  for (let i = 2; i < candles.length-1; i++) {
+    const c = candles[i], n = candles[i+1]
+    if (c.close < c.open && n.close > c.high) obs.push(`Bullish OB @ $${((c.high+c.low)/2).toFixed(2)}`)
+    if (c.close > c.open && n.close < c.low)  obs.push(`Bearish OB @ $${((c.high+c.low)/2).toFixed(2)}`)
+  }
+  return obs.slice(-3)
+}
+
+function detectFVGs(candles: any[]) {
+  const fvgs: string[] = []
+  for (let i = 1; i < candles.length; i++) {
+    if (candles[i].low > candles[i-1].high) fvgs.push(`Bullish FVG $${candles[i-1].high.toFixed(2)}-$${candles[i].low.toFixed(2)}`)
+    if (candles[i].high < candles[i-1].low)  fvgs.push(`Bearish FVG $${candles[i].high.toFixed(2)}-$${candles[i-1].low.toFixed(2)}`)
+  }
+  return fvgs.slice(-3)
+}
+
+async function callGroq(prompt: string, maxTokens = 800): Promise<string> {
+  const keys = [GROQ_KEY, GROQ_KEY2].filter(Boolean)
+  for (const key of keys) {
+    for (const model of GROQ_MODELS) {
+      try {
+        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: 'You are an elite crypto analyst. Respond with valid JSON only.' },
+              { role: 'user', content: prompt }
+            ],
+            max_tokens: maxTokens,
+            temperature: 0.3
+          }),
+          signal: AbortSignal.timeout(20000)
+        })
+        if (!r.ok) continue
+        const d = await r.json() as any
+        const txt = d.choices?.[0]?.message?.content || ''
+        if (txt) return txt
+      } catch { continue }
+    }
+  }
+  return ''
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
   if (req.method === 'OPTIONS') return res.status(200).end()
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
 
-  const { symbol = 'BTCUSDT', timeframes = ['1h', '4h', '1D'] } = req.body || {}
+  const { symbol = 'BTCUSDT', timeframe = '1h' } = req.body || {}
   const sym = symbol.replace('/', '').toUpperCase()
 
-  // Fetch candles for multiple timeframes in parallel
-  const tfMap: Record<string, string> = { '1m': '1min', '5m': '5min', '15m': '15min', '1h': '1H', '4h': '4H', '1D': '1D' }
-  const candlePromises = timeframes.map((tf: string) => getCandles(sym, tfMap[tf] || tf))
-  const allCandles = await Promise.all(candlePromises)
+  // Map timeframe to Bitget granularity
+  const granMap: Record<string,string> = { '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1H','4h':'4H','1d':'1D' }
+  const gran = granMap[timeframe] || '1H'
 
-  const analysis: Record<string, any> = {}
-  let overallBias = 0
-  let tfCount = 0
+  // Fetch all data in parallel
+  const [candles15m, candles1h, candles4h, ticker, fearGreed] = await Promise.all([
+    getCandles(sym, '15min', 80),
+    getCandles(sym, '1H', 80),
+    getCandles(sym, '4H', 60),
+    getTicker(sym),
+    getFearGreed(),
+  ])
 
-  for (let i = 0; i < timeframes.length; i++) {
-    const tf = timeframes[i]
-    const candles = allCandles[i]
-    if (!candles.length) continue
+  if (!ticker) return res.status(502).json({ error: `Cannot fetch ticker for ${sym}` })
 
-    const closes = candles.map(c => c[4])
-    const highs  = candles.map(c => c[2])
-    const lows   = candles.map(c => c[3])
-    const volumes = candles.map(c => c[5])
+  const closes1h = candles1h.map((c:any) => c.close)
+  const closes4h = candles4h.map((c:any) => c.close)
+  const closes15m = candles15m.map((c:any) => c.close)
 
-    const rsi    = calcRSI(closes)
-    const macd   = calcMACD(closes)
-    const ema20  = calcEMA(closes, 20)
-    const ema50  = calcEMA(closes, 50)
-    const trend  = detectTrend(closes)
-    const price  = closes[closes.length - 1]
-    const support = Math.min(...lows.slice(-20))
-    const resistance = Math.max(...highs.slice(-20))
-    const avgVol = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10
-    const lastVol = volumes[volumes.length - 1]
-
-    // SMC: simple BOS detection
-    const recentHighs = highs.slice(-10)
-    const prevHigh = Math.max(...highs.slice(-20, -10))
-    const bos = recentHighs.some(h => h > prevHigh) ? 'bullish_BOS' : null
-    const choch = lows.slice(-5).some(l => l < Math.min(...lows.slice(-20, -5))) ? 'bearish_CHoCH' : null
-
-    // Bias score: +1 bullish, -1 bearish
-    let bias = 0
-    if (trend.includes('up')) bias += 1
-    if (trend.includes('down')) bias -= 1
-    if (rsi < 35) bias += 1
-    if (rsi > 65) bias -= 1
-    if (ema20 > ema50) bias += 0.5
-    else bias -= 0.5
-    if (macd.histogram > 0) bias += 0.5
-    else bias -= 0.5
-
-    overallBias += bias
-    tfCount++
-
-    analysis[tf] = { rsi, macd, ema20, ema50, trend, price, support: parseFloat(support.toFixed(6)), resistance: parseFloat(resistance.toFixed(6)), volumeSpike: lastVol > avgVol * 1.5, smc: { bos, choch }, bias: bias > 0 ? 'bullish' : bias < 0 ? 'bearish' : 'neutral' }
+  const indicators = {
+    '15m': { rsi: calcRSI(closes15m), ema20: calcEMA(closes15m,20), ema50: calcEMA(closes15m,50), atr: calcATR(candles15m), macd: calcMACD(closes15m), bb: calcBB(closes15m) },
+    '1h':  { rsi: calcRSI(closes1h),  ema20: calcEMA(closes1h,20),  ema50: calcEMA(closes1h,50),  atr: calcATR(candles1h),  macd: calcMACD(closes1h),  bb: calcBB(closes1h) },
+    '4h':  { rsi: calcRSI(closes4h),  ema20: calcEMA(closes4h,20),  ema50: calcEMA(closes4h,50),  atr: calcATR(candles4h),  macd: calcMACD(closes4h),  bb: calcBB(closes4h) },
   }
 
-  const confluenceBias = tfCount > 0 ? overallBias / tfCount : 0
-  const overallDirection = confluenceBias > 0.5 ? 'BUY' : confluenceBias < -0.5 ? 'SELL' : 'WAIT'
-  const confidence = Math.min(95, Math.round(Math.abs(confluenceBias) * 40 + 50))
+  const obs  = detectOBs(candles1h)
+  const fvgs = detectFVGs(candles1h)
 
-  // AI reasoning if GROQ available
-  let aiReasoning = ''
-  if (GROQ_KEY) {
-    const summary = Object.entries(analysis).map(([tf, d]) => `${tf}: RSI=${d.rsi} trend=${d.trend} bias=${d.bias}`).join(' | ')
-    try {
-      aiReasoning = await callGroq('llama-3.3-70b-versatile', GROQ_KEY,
-        `Analyze ${sym}. Data: ${summary}. Overall bias: ${overallDirection} (${confidence}% confidence). Provide 3-sentence SMC analysis and entry recommendation.`)
-    } catch { aiReasoning = `${sym} analysis complete. ${overallDirection} bias across ${tfCount} timeframes.` }
+  const prompt = `Analyze ${sym} using the following LIVE data. Respond with JSON only.
+
+PRICE: $${ticker.price} | 24h: ${ticker.change24h >= 0 ? '+' : ''}${ticker.change24h}%
+Fear & Greed: ${fearGreed.value}/100 (${fearGreed.label})
+
+INDICATORS:
+15m → RSI: ${indicators['15m'].rsi} | EMA20: ${indicators['15m'].ema20} | EMA50: ${indicators['15m'].ema50} | ATR: ${indicators['15m'].atr}
+     MACD: ${indicators['15m'].macd.macd} / Signal: ${indicators['15m'].macd.signal} (hist: ${indicators['15m'].macd.histogram})
+1H  → RSI: ${indicators['1h'].rsi} | EMA20: ${indicators['1h'].ema20} | EMA50: ${indicators['1h'].ema50} | ATR: ${indicators['1h'].atr}
+     MACD: ${indicators['1h'].macd.macd} / Signal: ${indicators['1h'].macd.signal} (hist: ${indicators['1h'].macd.histogram})
+     BB: Upper ${indicators['1h'].bb.upper} | Mid ${indicators['1h'].bb.middle} | Lower ${indicators['1h'].bb.lower}
+4H  → RSI: ${indicators['4h'].rsi} | EMA20: ${indicators['4h'].ema20} | EMA50: ${indicators['4h'].ema50}
+     MACD: ${indicators['4h'].macd.macd} / Signal: ${indicators['4h'].macd.signal} (hist: ${indicators['4h'].macd.histogram})
+
+SMC: Order Blocks: ${obs.join(', ') || 'none detected'} | FVGs: ${fvgs.join(', ') || 'none detected'}
+
+Respond with this exact JSON:
+{
+  "bias": "bullish|bearish|neutral",
+  "confidence": 0-100,
+  "direction": "LONG|SHORT|WAIT",
+  "entry": ${ticker.price},
+  "stopLoss": 0,
+  "takeProfit": 0,
+  "leverage": 10,
+  "liquidationPrice": 0,
+  "rr": "1:X",
+  "summary": "2-3 sentence analysis",
+  "keyLevels": { "support": 0, "resistance": 0 },
+  "patterns": ["list"],
+  "timeframe": "${timeframe}"
+}`
+
+  const raw = await callGroq(prompt, 600)
+  let analysis: any = {}
+  try {
+    analysis = JSON.parse(raw.replace(/```json?/g,'').replace(/```/g,'').trim())
+  } catch {
+    // Fallback: build from indicators
+    const rsi1h = indicators['1h'].rsi
+    const bias = rsi1h > 55 ? 'bullish' : rsi1h < 45 ? 'bearish' : 'neutral'
+    const dir = bias === 'bullish' ? 'LONG' : bias === 'bearish' ? 'SHORT' : 'WAIT'
+    const sl = dir === 'LONG' ? ticker.price * 0.97 : ticker.price * 1.03
+    const tp = dir === 'LONG' ? ticker.price * 1.06 : ticker.price * 0.94
+    analysis = { bias, confidence: 55, direction: dir, entry: ticker.price, stopLoss: sl, takeProfit: tp, leverage: 10, liquidationPrice: dir==='LONG'?ticker.price*0.91:ticker.price*1.09, rr:'1:2', summary: `RSI ${rsi1h} on 1H. Fear & Greed: ${fearGreed.value} (${fearGreed.label}).`, keyLevels:{support:ticker.price*0.97,resistance:ticker.price*1.03}, patterns:[], timeframe }
   }
 
-  return res.status(200).json({
+  // Ensure liquidation price is calculated
+  if (!analysis.liquidationPrice && analysis.entry) {
+    const lev = analysis.leverage || 10
+    analysis.liquidationPrice = analysis.direction === 'LONG'
+      ? parseFloat((analysis.entry * (1 - 1/lev * 0.9)).toFixed(2))
+      : parseFloat((analysis.entry * (1 + 1/lev * 0.9)).toFixed(2))
+  }
+
+  res.json({
     symbol: sym,
-    direction: overallDirection,
-    confidence,
-    analysis,
-    aiReasoning,
-    entry: analysis['1h']?.price || 0,
-    stopLoss: overallDirection === 'BUY' ? analysis['1h']?.support : analysis['1h']?.resistance,
-    takeProfit: overallDirection === 'BUY' ? analysis['1h']?.resistance : analysis['1h']?.support,
-    timestamp: Date.now(),
+    timeframe,
+    price: ticker.price,
+    fearGreed,
+    indicators,
+    orderBlocks: obs,
+    fairValueGaps: fvgs,
+    // Normalised keys — both camelCase and old style
+    bias: analysis.bias,
+    direction: analysis.direction,
+    confidence: analysis.confidence,
+    entry: analysis.entry,
+    stopLoss: analysis.stopLoss,
+    takeProfit: analysis.takeProfit,
+    leverage: analysis.leverage || 10,
+    liquidationPrice: analysis.liquidationPrice,
+    rr: analysis.rr,
+    summary: analysis.summary,
+    keyLevels: analysis.keyLevels,
+    patterns: analysis.patterns || [],
+    analysis: analysis.summary,   // backwards compat
+    signal: analysis.direction,   // backwards compat
+    timestamp: new Date().toISOString()
   })
 }
