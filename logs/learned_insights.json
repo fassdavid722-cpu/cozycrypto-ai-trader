@@ -1,0 +1,11 @@
+{
+  "lessons": [
+    "Always verify account balance before attempting a trade.",
+    "Prioritize high-volume pairs (BTC, ETH) during low volatility.",
+    "Look for CHoCH on the 1H timeframe for trend reversal confirmation."
+  ],
+  "adjustments": {
+    "BTCUSDT": { "min_confidence": 65 },
+    "ETHUSDT": { "min_confidence": 65 }
+  }
+}
