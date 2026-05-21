@@ -1,4 +1,13 @@
-# CozyCrypto AI Trader V2
+# 🤖 CozyCrypto AI Trader - Autonomous Mode 🚀
+
+Fully autonomous AI trading bot with 24/7 market scanning, SMC-based analysis, and auto-execution.
+
+## 🌟 New Autonomous Features
+- **24/7 Market Scanner:** Scans top pairs (BTC, ETH, SOL, etc.) every 5 minutes.
+- **SMC Intelligence:** Uses Smart Money Concepts (Order Blocks, FVG) via Groq Llama-3.
+- **Auto-Execution:** Executes trades on Bitget if confidence > 55% and R:R > 1.5.
+- **Telegram Alerts:** Real-time notifications for every scan and trade.
+- **Vercel Cron Integration:** Automated scheduling built-in.
 
 **Autonomous AI trading platform for Cozanet. Built for Bitget. Deployed on Vercel.**
 
