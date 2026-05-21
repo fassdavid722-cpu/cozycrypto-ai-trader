@@ -12,6 +12,8 @@ const TG_CHAT_ID    = process.env.TELEGRAM_CHAT_ID || ''
 const MIN_CONF      = parseFloat(process.env.MIN_CONFIDENCE || '55')
 const MAX_PCT       = parseFloat(process.env.MAX_TRADE_PERCENT || '10')
 const TRADE_MODE    = process.env.TRADE_MODE || 'autonomous'
+const GH_TOKEN      = process.env.GITHUB_TOKEN || ''
+const GH_REPO       = process.env.GITHUB_REPO || ''
 
 const WATCH_PAIRS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
 
@@ -42,6 +44,29 @@ async function sendTelegram(text: string) {
   } catch (e) { console.error('Telegram error:', e) }
 }
 
+async function saveToGitHub(path: string, data: any, message: string) {
+  if (!GH_TOKEN || !GH_REPO) return
+  try {
+    const apiUrl = `https://api.github.com/repos/${GH_REPO}/contents/${path}`
+    const check = await fetch(apiUrl, { headers: { 'Authorization': `Bearer ${GH_TOKEN}` } })
+    const existing = check.ok ? await check.json() as any : null
+    const content = Buffer.from(JSON.stringify(data, null, 2)).toString('base64')
+    const body: any = { message, content }
+    if (existing?.sha) body.sha = existing.sha
+    await fetch(apiUrl, { method: 'PUT', headers: { 'Authorization': `Bearer ${GH_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  } catch (e) { console.error(`GitHub Save Error (${path}):`, e) }
+}
+
+async function loadFromGitHub(path: string): Promise<any> {
+  if (!GH_TOKEN || !GH_REPO) return null
+  try {
+    const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${path}`, { headers: { 'Authorization': `Bearer ${GH_TOKEN}` } })
+    if (!r.ok) return null
+    const d = await r.json() as any
+    return JSON.parse(Buffer.from(d.content, 'base64').toString())
+  } catch (e) { return null }
+}
+
 async function groqCall(messages: any[]) {
   const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -67,7 +92,6 @@ async function getMarketData(symbol: string) {
     const tick = await tickR.json() as any
     const candle = await candleR.json() as any
     
-    // Format candles for AI (H, L, C)
     const formattedCandles = (candle?.data || []).map((c: any) => ({
       h: parseFloat(c[2]), l: parseFloat(c[3]), c: parseFloat(c[4])
     })).reverse()
@@ -93,7 +117,7 @@ async function getBalance() {
 
 // ── Execution ──────────────────────────────────────────────────────────────────
 async function executeTrade(symbol: string, side: 'buy'|'sell', size: number) {
-  if (TRADE_MODE !== 'autonomous' || !API_KEY) return { simulated: true }
+  if (TRADE_MODE !== 'autonomous' || !API_KEY) return { simulated: true, msg: 'Simulated trade' }
   const path = '/api/v2/spot/trade/place-order'
   const body = JSON.stringify({ symbol, side, orderType: 'market', force: 'gtc', size: size.toString() })
   const r = await fetch(BITGET_BASE + path, { method: 'POST', headers: authHeaders('POST', path, body) as any, body })
@@ -111,9 +135,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  console.log('🚀 Starting Autonomous Market Scan with Deep Thinking...')
+  console.log('🚀 Starting Autonomous Heartbeat...')
   const results = []
   const balance = await getBalance()
+  
+  // Load Memory
+  const [logs, insights] = await Promise.all([
+    loadFromGitHub('logs/system_logs.json').then(d => d || []),
+    loadFromGitHub('logs/learned_insights.json').then(d => d || { lessons: [] })
+  ])
+
+  logs.push({ t: new Date().toISOString(), msg: `Heartbeat started. Balance: $${balance}` })
 
   for (const symbol of WATCH_PAIRS) {
     try {
@@ -123,9 +155,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const prompt = `Analyze ${symbol} at $${market.price}. 24h Change: ${market.change24h}%.
       RECENT CANDLES (H, L, C): ${JSON.stringify(market.candles)}
       Balance: ${balance} USDT. Max Trade: ${balance * MAX_PCT / 100} USDT.
+      LEARNED LESSONS: ${JSON.stringify(insights.lessons)}
       
       Output JSON: { 
-        "thinking": "Your step-by-step logical reasoning (SMC, structure, risk)",
+        "thinking": "Your step-by-step logical reasoning",
         "action": "buy"|"sell"|"wait", 
         "confidence": 0-100, 
         "reason": "Final summary reason", 
@@ -135,21 +168,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }`
 
       const analysis = await groqCall([
-        { role: 'system', content: 'You are an elite autonomous trader. You think deeply before acting. Output JSON only.' },
+        { role: 'system', content: 'You are an elite autonomous trader. You act proactively without waiting for prompts. Output JSON only.' },
         { role: 'user', content: prompt }
       ])
 
       let execution = null
       if (analysis.action !== 'wait' && analysis.confidence >= MIN_CONF && balance > 10) {
         execution = await executeTrade(symbol, analysis.action, analysis.size || (balance * MAX_PCT / 100))
+        const logMsg = `I executed ${analysis.action.toUpperCase()} on ${symbol}. Result: ${execution.msg || 'Success'}`
+        logs.push({ t: new Date().toISOString(), msg: logMsg })
+        
         await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*
 Pair: #${symbol}
 Action: ${analysis.action.toUpperCase()}
 Price: $${market.price}
 Confidence: ${analysis.confidence}%
-Thinking: ${analysis.thinking}
-Reason: ${analysis.reason}
-TP: $${analysis.tp} | SL: $${analysis.sl}`)
+Reason: ${analysis.reason}`)
       }
 
       results.push({ symbol, analysis, execution })
@@ -157,6 +191,9 @@ TP: $${analysis.tp} | SL: $${analysis.sl}`)
       console.error(`Error scanning ${symbol}:`, e)
     }
   }
+
+  // Save State
+  await saveToGitHub('logs/system_logs.json', logs.slice(-100), '📜 heartbeat update')
 
   return res.status(200).json({
     timestamp: new Date().toISOString(),
