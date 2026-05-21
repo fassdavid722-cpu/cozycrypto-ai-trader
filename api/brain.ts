@@ -7,7 +7,7 @@ const BASE       = 'https://api.bitget.com'
 const API_KEY    = process.env.BITGET_API_KEY || ''
 const SECRET_KEY = process.env.BITGET_SECRET_KEY || ''
 const PASSPHRASE = process.env.BITGET_PASSPHRASE || ''
-const MIN_CONF   = parseFloat(process.env.MIN_CONFIDENCE || '65')
+const MIN_CONF   = parseFloat(process.env.MIN_CONFIDENCE || '55')
 const MAX_PCT    = parseFloat(process.env.MAX_TRADE_PERCENT || '10')
 const TRADE_MODE = process.env.TRADE_MODE || 'autonomous' // autonomous | observe | manual
 
