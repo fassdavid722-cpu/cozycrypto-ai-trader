@@ -542,10 +542,15 @@ async function callAI(
 
         if (r2.ok) {
           const d2 = (await r2.json()) as any
-          const reply = d2.choices?.[0]?.message?.content
-          if (reply) {
-            console.log(`[${brain.name}] Success with tools`)
-            return { reply, toolsUsed, brain: brain.name }
+          const content = d2.choices?.[0]?.message?.content
+          if (content) {
+            try {
+              const parsed = JSON.parse(content)
+              console.log(`[${brain.name}] Success with tools`)
+              return { reply: parsed.reply, thinking: parsed.thinking, toolsUsed, brain: brain.name }
+            } catch {
+              return { reply: content, thinking: '', toolsUsed, brain: brain.name }
+            }
           }
         }
       }
@@ -553,7 +558,12 @@ async function callAI(
       // Direct reply
       if (msg1.content) {
         console.log(`[${brain.name}] Success with direct reply`)
-        return { reply: msg1.content, toolsUsed, brain: brain.name }
+        try {
+          const parsed = JSON.parse(msg1.content)
+          return { reply: parsed.reply, thinking: parsed.thinking, toolsUsed, brain: brain.name }
+        } catch {
+          return { reply: msg1.content, thinking: '', toolsUsed, brain: brain.name }
+        }
       }
     } catch (e) {
       console.error(`[${brain.name}] Error:`, e)
@@ -636,9 +646,11 @@ Your trading methodology:
 - Confidence gate: only recommend trades above 65% confidence
 
 Response style:
-- Be concise, specific, and actionable — no fluff
-- For trade signals use this format: 🔥 SIGNAL: LONG/SHORT | Entry: $X | SL: $X | TP: $X | Liq: $X | R:R 1:X | Confidence: X%
-- For analysis: lead with the key finding, then supporting data
+- You MUST think deeply before responding.
+- Your response MUST be a JSON object with two fields:
+  1. "thinking": A detailed, step-by-step explanation of your logic, market analysis, and risk assessment.
+  2. "reply": Your final concise, specific, and actionable response to the user.
+- For trade signals in "reply", use this format: 🔥 SIGNAL: LONG/SHORT | Entry: $X | SL: $X | TP: $X | Liq: $X | R:R 1:X | Confidence: X%
 - If asked about price, always fetch live data before responding${contextStr}`
 
     const messages = [
@@ -648,14 +660,14 @@ Response style:
     ]
 
     // Call the selected brain
-    const { reply, toolsUsed, brain } = await callAI(brainType, messages, useTools, contextStr, host, protocol)
+    const { reply, thinking, toolsUsed, brain } = await callAI(brainType, messages, useTools, contextStr, host, protocol)
 
     // Save updated session
     if (save && session_id) {
       const updatedHistory = [
         ...sessionHistory,
         { role: 'user', content: message, timestamp: Date.now() },
-        { role: 'ai', content: reply, timestamp: Date.now() }
+        { role: 'ai', content: reply, thinking, timestamp: Date.now() }
       ]
 
       const title =
@@ -668,6 +680,7 @@ Response style:
 
     res.json({
       reply: reply || 'No response generated.',
+      thinking: thinking || '',
       brain,
       tools_called: toolsUsed,
       session_id,

@@ -129,7 +129,13 @@ export default function AIChat() {
       })
       const data = await res.json()
       if (data.tools_called?.length) setToolsUsed(data.tools_called)
-      addMessage({ id: (Date.now()+1).toString(), role: 'ai', content: data.reply, timestamp: Date.now() })
+      addMessage({ 
+        id: (Date.now()+1).toString(), 
+        role: 'ai', 
+        content: data.reply, 
+        thinking: data.thinking,
+        timestamp: Date.now() 
+      })
       // Refresh session list after message
       loadSessionList()
     } catch {
@@ -312,13 +318,26 @@ export default function AIChat() {
                     <span className="text-blue-ai text-[10px] font-bold">You</span>
                   </div>
                 )}
-                <div className={`max-w-[78%] rounded-2xl px-4 py-3 ${
-                  m.role === 'user'
-                    ? 'bg-gold/12 text-white border border-gold/20 rounded-tr-sm'
-                    : 'bg-bg-secondary text-text-secondary border border-bg-border rounded-tl-sm'
-                }`}>
-                  {m.role === 'ai' ? <RenderMessage content={m.content} /> : <p className="text-sm leading-relaxed">{m.content}</p>}
-                  <p className="text-[9px] text-text-muted mt-1.5 font-mono">{formatTime(m.timestamp)}</p>
+                <div className={`max-w-[78%] space-y-2`}>
+                  {m.thinking && (
+                    <div className="bg-black/20 border border-bg-border rounded-2xl rounded-tl-sm px-4 py-3 mb-2">
+                      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-bg-border/50">
+                        <Brain size={12} className="text-gold" />
+                        <span className="text-[10px] font-semibold text-gold uppercase tracking-wider">Internal Thinking</span>
+                      </div>
+                      <div className="text-[11px] leading-relaxed text-text-muted italic">
+                        {m.thinking}
+                      </div>
+                    </div>
+                  )}
+                  <div className={`rounded-2xl px-4 py-3 ${
+                    m.role === 'user'
+                      ? 'bg-gold/12 text-white border border-gold/20 rounded-tr-sm'
+                      : 'bg-bg-secondary text-text-secondary border border-bg-border rounded-tl-sm'
+                  }`}>
+                    <RenderMessage content={m.content} />
+                    <p className="text-[9px] text-text-muted mt-1.5 font-mono">{formatTime(m.timestamp)}</p>
+                  </div>
                 </div>
               </div>
             ))}

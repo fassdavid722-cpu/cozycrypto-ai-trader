@@ -44,7 +44,7 @@ export interface ChatMessage {
   role: 'user' | 'ai'
   content: string
   timestamp: number
-  thinking?: boolean
+  thinking?: string
 }
 
 export interface PortfolioPoint {
