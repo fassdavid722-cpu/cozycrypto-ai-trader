@@ -46,7 +46,12 @@ async function groqCall(messages: any[]) {
   const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.2, response_format: { type: 'json_object' } }),
+    body: JSON.stringify({ 
+      model: 'llama-3.3-70b-versatile', 
+      messages, 
+      temperature: 0.1, 
+      response_format: { type: 'json_object' } 
+    }),
   })
   const d = await r.json() as any
   return JSON.parse(d.choices?.[0]?.message?.content || '{}')
@@ -61,10 +66,16 @@ async function getMarketData(symbol: string) {
     ])
     const tick = await tickR.json() as any
     const candle = await candleR.json() as any
+    
+    // Format candles for AI (H, L, C)
+    const formattedCandles = (candle?.data || []).map((c: any) => ({
+      h: parseFloat(c[2]), l: parseFloat(c[3]), c: parseFloat(c[4])
+    })).reverse()
+
     return {
       price: parseFloat(tick?.data?.[0]?.lastPr || '0'),
       change24h: parseFloat(tick?.data?.[0]?.changeUtc24h || '0') * 100,
-      candles: candle?.data || []
+      candles: formattedCandles
     }
   } catch { return null }
 }
@@ -91,7 +102,6 @@ async function executeTrade(symbol: string, side: 'buy'|'sell', size: number) {
 
 // ── Main Handler ───────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Security check for Vercel Cron or GitHub Actions
   const authHeader = req.headers['authorization']
   const cronSecret = process.env.CRON_SECRET
   
@@ -101,37 +111,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  console.log('🚀 Starting Autonomous Market Scan...')
+  console.log('🚀 Starting Autonomous Market Scan with Deep Thinking...')
   const results = []
   const balance = await getBalance()
 
   for (const symbol of WATCH_PAIRS) {
-    const market = await getMarketData(symbol)
-    if (!market) continue
+    try {
+      const market = await getMarketData(symbol)
+      if (!market) continue
 
-    const prompt = `Analyze ${symbol} at $${market.price}. 24h Change: ${market.change24h}%.
-    Use SMC (Order Blocks, FVG) and Market Structure.
-    Balance: ${balance} USDT. Max Trade: ${balance * MAX_PCT / 100} USDT.
-    Output JSON: { "action": "buy"|"sell"|"wait", "confidence": 0-100, "reason": "...", "tp": price, "sl": price, "size": usdt }`
+      const prompt = `Analyze ${symbol} at $${market.price}. 24h Change: ${market.change24h}%.
+      RECENT CANDLES (H, L, C): ${JSON.stringify(market.candles)}
+      Balance: ${balance} USDT. Max Trade: ${balance * MAX_PCT / 100} USDT.
+      
+      Output JSON: { 
+        "thinking": "Your step-by-step logical reasoning (SMC, structure, risk)",
+        "action": "buy"|"sell"|"wait", 
+        "confidence": 0-100, 
+        "reason": "Final summary reason", 
+        "tp": price, 
+        "sl": price, 
+        "size": usdt 
+      }`
 
-    const analysis = await groqCall([
-      { role: 'system', content: 'You are an elite autonomous trader. Output JSON only.' },
-      { role: 'user', content: prompt }
-    ])
+      const analysis = await groqCall([
+        { role: 'system', content: 'You are an elite autonomous trader. You think deeply before acting. Output JSON only.' },
+        { role: 'user', content: prompt }
+      ])
 
-    let execution = null
-    if (analysis.action !== 'wait' && analysis.confidence >= MIN_CONF && balance > 10) {
-      execution = await executeTrade(symbol, analysis.action, analysis.size || (balance * MAX_PCT / 100))
-      await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*
+      let execution = null
+      if (analysis.action !== 'wait' && analysis.confidence >= MIN_CONF && balance > 10) {
+        execution = await executeTrade(symbol, analysis.action, analysis.size || (balance * MAX_PCT / 100))
+        await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*
 Pair: #${symbol}
 Action: ${analysis.action.toUpperCase()}
 Price: $${market.price}
 Confidence: ${analysis.confidence}%
+Thinking: ${analysis.thinking}
 Reason: ${analysis.reason}
 TP: $${analysis.tp} | SL: $${analysis.sl}`)
-    }
+      }
 
-    results.push({ symbol, analysis, execution })
+      results.push({ symbol, analysis, execution })
+    } catch (e) {
+      console.error(`Error scanning ${symbol}:`, e)
+    }
   }
 
   return res.status(200).json({
