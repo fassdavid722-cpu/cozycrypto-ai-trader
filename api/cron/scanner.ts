@@ -91,10 +91,14 @@ async function executeTrade(symbol: string, side: 'buy'|'sell', size: number) {
 
 // ── Main Handler ───────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Security check for Vercel Cron
+  // Security check for Vercel Cron or GitHub Actions
   const authHeader = req.headers['authorization']
-  if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' })
+  const cronSecret = process.env.CRON_SECRET
+  
+  if (process.env.NODE_ENV === 'production') {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
   }
 
   console.log('🚀 Starting Autonomous Market Scan...')

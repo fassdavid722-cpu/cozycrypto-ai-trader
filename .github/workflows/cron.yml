@@ -1,0 +1,15 @@
+name: 5-Minute Market Scanner
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Scanner
+        run: |
+          curl -X GET "https://cozycrypto-ai-trader.vercel.app/api/cron/scanner" \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
