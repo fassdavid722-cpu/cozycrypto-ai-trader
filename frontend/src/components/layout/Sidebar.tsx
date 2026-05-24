@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, Wallet, MessageSquare, Zap, Settings, LogOut, ShieldCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, Wallet, MessageSquare, LogOut, ShieldCheck } from 'lucide-react'
 import Logo from './Logo'
 import { useStore } from '@/store/useStore'
 
@@ -8,8 +8,6 @@ const navItems = [
   { id: 'market', label: 'Market', icon: TrendingUp },
   { id: 'portfolio', label: 'Portfolio', icon: Wallet },
   { id: 'ai-chat', label: 'AI Chat', icon: MessageSquare },
-  { id: 'workflows', label: 'Workflows', icon: Zap },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
 export default function Sidebar() {
@@ -50,9 +48,6 @@ export default function Sidebar() {
             >
               <Icon size={18} className={`flex-shrink-0 ${activeTab === id ? 'text-black' : 'group-hover:text-gold transition-colors'}`} />
               {sidebarOpen && <span className="text-sm tracking-wide">{label}</span>}
-              {activeTab === id && sidebarOpen && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-black/40" />
-              )}
             </button>
           ))}
         </div>
@@ -62,13 +57,9 @@ export default function Sidebar() {
       <div className="p-4 space-y-3 bg-black/10 border-t border-bg-border/40">
         {sidebarOpen && (
           <div className="px-4 py-3 bg-bg-secondary/50 rounded-2xl border border-bg-border/40 backdrop-blur-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <ShieldCheck size={12} className="text-green-400" />
-              <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider">Security</span>
-            </div>
             <p className="text-[11px] text-white font-medium flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              API Connected
+              AI Autonomous
             </p>
           </div>
         )}

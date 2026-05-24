@@ -1,29 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { BarChart2, Scan, Briefcase, Send, Mic, Paperclip, Globe, Sparkles, AlertCircle, Brain, TrendingUp, Activity, Layers } from 'lucide-react'
-import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
+import { Send, Paperclip, Globe, Sparkles, AlertCircle, Brain } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import Card from '@/components/ui/Card'
-import MiniChart from '@/components/ui/MiniChart'
 import Logo from '@/components/layout/Logo'
 
 const API = import.meta.env.VITE_API_URL || ''
 
-const quickActions = [
-  { icon: BarChart2, label: 'Market Analysis', color: 'text-blue-400', prompt: 'Analyze the current market conditions and give me the top 3 opportunities' },
-  { icon: Scan,      label: 'Scan Setups',     color: 'text-gold',     prompt: 'Scan the market for the best scalping opportunity right now with entry, SL, and TP' },
-  { icon: Briefcase, label: 'Portfolio Audit', color: 'text-green-400', prompt: 'Check my portfolio and give me a summary of my positions and P&L' },
-  { icon: Brain,     label: 'AI Insights',    color: 'text-purple-400', prompt: 'What has your learner picked up in the last cycle? Any important market events?' },
-]
-
 export default function Dashboard() {
-  const { tickers, watchlist, portfolioValue, portfolioChange, portfolioHistory,
-          workflows, alerts, messages, addMessage, isThinking, setThinking,
-          aiStatus, setActiveTab } = useStore()
+  const { tickers, portfolioValue, portfolioChange, alerts, messages, addMessage, isThinking, setThinking } = useStore()
 
   const [input, setInput] = useState('')
   const [sessionId] = useState<string>(() => `dash_${Date.now()}`)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const displayMessages = messages.slice(-4)
+  const displayMessages = messages.slice(-10)
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
@@ -54,77 +43,33 @@ export default function Dashboard() {
     }
   }
 
-  const marketTickers = tickers.slice(0, 6)
-  const unreadAlerts = alerts.filter(a => !a.read).slice(0, 3)
-  const activeWorkflows = workflows.filter(w => w.status === 'running' || w.status === 'scheduled').slice(0, 3)
+  const marketTickers = tickers.slice(0, 8)
+  const unreadAlerts = alerts.filter(a => !a.read).slice(0, 5)
 
   return (
     <div className="h-full overflow-y-auto pb-10 px-4 py-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto">
         
-        {/* Top Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg bg-gold/10 border border-gold/20">
-                <TrendingUp size={18} className="text-gold" />
-              </div>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${portfolioChange >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                {portfolioChange >= 0 ? '+' : ''}{portfolioChange.toFixed(2)}%
-              </span>
-            </div>
-            <p className="text-text-muted text-xs font-medium uppercase tracking-wider">Total Portfolio Value</p>
-            <h3 className="text-2xl font-bold text-white mt-1 font-mono">
-              {portfolioValue > 0 ? `$${portfolioValue.toLocaleString('en-US',{minimumFractionDigits:2})}` : '$0.00'}
-            </h3>
-          </Card>
-
-          <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                <Activity size={18} className="text-blue-400" />
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400">
-                {activeWorkflows.length} Active
-              </span>
-            </div>
-            <p className="text-text-muted text-xs font-medium uppercase tracking-wider">System Heartbeat</p>
-            <h3 className="text-2xl font-bold text-white mt-1">Autonomous</h3>
-          </Card>
-
-          <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                <Layers size={18} className="text-purple-400" />
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400">
-                {tickers.length} Pairs
-              </span>
-            </div>
-            <p className="text-text-muted text-xs font-medium uppercase tracking-wider">Market Coverage</p>
-            <h3 className="text-2xl font-bold text-white mt-1">Elite Scanner</h3>
-          </Card>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Main Content: AI Assistant */}
           <div className="lg:col-span-8 space-y-6">
-            <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 flex flex-col h-[500px]">
+            <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 flex flex-col h-[650px]">
               <div className="p-4 border-b border-bg-border/40 flex items-center justify-between bg-white/5">
                 <div className="flex items-center gap-3">
                   <Logo size={24} showText={false} />
                   <div>
-                    <h3 className="text-white font-bold text-sm">Cozanet AI Assistant</h3>
+                    <h3 className="text-white font-bold text-sm">Autonomous AI Trader</h3>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                      <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium">Governor Mode Active</span>
+                      <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium">Live Heartbeat Active</span>
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  {['SMC','Risk','Learn'].map(tag => (
-                    <span key={tag} className="text-[9px] px-2 py-0.5 bg-white/5 border border-white/10 text-text-muted rounded-full font-mono">{tag}</span>
-                  ))}
+                <div className="text-right">
+                  <p className="text-text-muted text-[10px] uppercase tracking-widest">Portfolio</p>
+                  <p className={`text-xs font-bold font-mono ${portfolioChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${portfolioValue.toLocaleString('en-US',{minimumFractionDigits:2})} ({portfolioChange >= 0 ? '+' : ''}{portfolioChange.toFixed(2)}%)
+                  </p>
                 </div>
               </div>
 
@@ -136,26 +81,26 @@ export default function Dashboard() {
                       <Sparkles size={32} className="text-gold" />
                     </div>
                     <div>
-                      <p className="text-white font-semibold">Welcome back, Chief.</p>
-                      <p className="text-text-muted text-xs mt-1">I've been scanning the markets. How can I assist you today?</p>
+                      <p className="text-white font-semibold">Autonomous Mode Active</p>
+                      <p className="text-text-muted text-xs mt-1">I am scanning the markets and executing trades based on your goals.</p>
                     </div>
                   </div>
                 ) : (
                   displayMessages.map(m => (
                     <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] space-y-2`}>
+                      <div className={`max-w-[90%] space-y-2`}>
                         {m.thinking && (
                           <div className="bg-black/20 border border-bg-border/40 rounded-2xl rounded-tl-sm px-4 py-3 mb-2">
                             <div className="flex items-center gap-2 mb-2 pb-2 border-b border-bg-border/20">
                               <Brain size={12} className="text-gold" />
-                              <span className="text-[10px] font-bold text-gold uppercase tracking-widest">Thinking</span>
+                              <span className="text-[10px] font-bold text-gold uppercase tracking-widest">Internal Logic</span>
                             </div>
                             <p className="text-[11px] leading-relaxed text-text-muted italic">{m.thinking}</p>
                           </div>
                         )}
                         <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                           m.role === 'user' 
-                            ? 'bg-gold text-black font-medium shadow-lg shadow-gold/10' 
+                            ? 'bg-gold text-black font-medium' 
                             : 'bg-bg-secondary border border-bg-border/60 text-white'
                         }`}>
                           {m.content}
@@ -172,24 +117,11 @@ export default function Dashboard() {
                         <span className="w-1.5 h-1.5 rounded-full bg-gold animate-bounce" style={{animationDelay:'0.2s'}} />
                         <span className="w-1.5 h-1.5 rounded-full bg-gold animate-bounce" style={{animationDelay:'0.4s'}} />
                       </div>
-                      <span className="text-xs text-text-muted font-medium italic">AI is processing market data...</span>
+                      <span className="text-xs text-text-muted font-medium italic">AI is processing...</span>
                     </div>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
-              </div>
-
-              {/* Quick Actions */}
-              <div className="px-6 py-3 border-t border-bg-border/40 bg-black/10">
-                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                  {quickActions.map(({ icon: Icon, label, color, prompt }) => (
-                    <button key={label} onClick={() => sendMessage(prompt)}
-                      className="flex items-center gap-2 px-3 py-2 bg-bg-secondary/50 border border-bg-border/40 rounded-xl hover:border-gold/40 hover:bg-white/5 transition-all shrink-0 group">
-                      <Icon size={14} className={`${color} group-hover:scale-110 transition-transform`} />
-                      <span className="text-[10px] text-text-secondary font-medium whitespace-nowrap">{label}</span>
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Input Area */}
@@ -200,8 +132,8 @@ export default function Dashboard() {
                       value={input} 
                       onChange={e => setInput(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                      placeholder="Ask anything or give a command..."
-                      className="w-full bg-bg-secondary border border-bg-border/60 rounded-2xl pl-4 pr-20 py-3 text-sm text-white placeholder-text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all" 
+                      placeholder="Ask the AI anything..."
+                      className="w-full bg-bg-secondary border border-bg-border/60 rounded-2xl pl-4 pr-20 py-3 text-sm text-white placeholder-text-muted/50 focus:outline-none focus:border-gold/40 transition-all" 
                     />
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                       <button className="p-1.5 hover:text-gold text-text-muted transition-colors"><Paperclip size={14} /></button>
@@ -224,24 +156,22 @@ export default function Dashboard() {
           <div className="lg:col-span-4 space-y-6">
             {/* Market Watchlist */}
             <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 overflow-hidden">
-              <div className="p-4 border-b border-bg-border/40 flex items-center justify-between bg-white/5">
+              <div className="p-4 border-b border-bg-border/40 bg-white/5">
                 <h3 className="text-white font-bold text-sm uppercase tracking-wider">Market Pulse</h3>
-                <button onClick={() => setActiveTab('market')} className="text-gold text-[10px] font-bold hover:underline">VIEW ALL</button>
               </div>
               <div className="p-4 space-y-4">
                 {marketTickers.map(t => (
                   <div key={t.symbol} className="flex items-center justify-between group">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:border-gold/30 transition-colors">
+                      <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
                         <span className="text-[10px] font-bold text-white">{t.symbol.split('USDT')[0]}</span>
                       </div>
                       <div>
                         <p className="text-white text-xs font-bold">{t.symbol}</p>
-                        <p className="text-[10px] text-text-muted font-mono">Vol: ${(t.volume/1000000).toFixed(1)}M</p>
+                        <p className="text-[10px] text-text-muted font-mono">${t.price.toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-white text-xs font-bold font-mono">${t.price.toLocaleString()}</p>
                       <p className={`text-[10px] font-bold font-mono ${t.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {t.change24h >= 0 ? '+' : ''}{t.change24h.toFixed(2)}%
                       </p>
@@ -253,14 +183,13 @@ export default function Dashboard() {
 
             {/* Recent Alerts */}
             <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 overflow-hidden">
-              <div className="p-4 border-b border-bg-border/40 flex items-center justify-between bg-white/5">
-                <h3 className="text-white font-bold text-sm uppercase tracking-wider">System Alerts</h3>
-                <span className="text-[10px] bg-gold/10 text-gold px-2 py-0.5 rounded-full font-bold">{unreadAlerts.length} NEW</span>
+              <div className="p-4 border-b border-bg-border/40 bg-white/5">
+                <h3 className="text-white font-bold text-sm uppercase tracking-wider">Activity Log</h3>
               </div>
               <div className="p-4 space-y-4">
                 {unreadAlerts.length === 0 ? (
                   <div className="py-4 text-center">
-                    <p className="text-text-muted text-xs italic">No critical alerts detected.</p>
+                    <p className="text-text-muted text-xs italic">No recent activity.</p>
                   </div>
                 ) : (
                   unreadAlerts.map(a => (
