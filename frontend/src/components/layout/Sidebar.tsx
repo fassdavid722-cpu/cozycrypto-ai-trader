@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, Wallet, MessageSquare, Zap, Settings, LogOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, Wallet, MessageSquare, Zap, Settings, LogOut, ShieldCheck } from 'lucide-react'
 import Logo from './Logo'
 import { useStore } from '@/store/useStore'
 
@@ -16,54 +16,74 @@ export default function Sidebar() {
   const { activeTab, setActiveTab, sidebarOpen, setSidebarOpen } = useStore()
 
   return (
-    <aside className={`flex flex-col h-screen bg-bg-primary border-r border-bg-border transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'}`}>
+    <aside className={`flex flex-col h-screen bg-bg-primary border-r border-bg-border/40 transition-all duration-500 ease-in-out ${sidebarOpen ? 'w-64' : 'w-20'}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-bg-border">
-        {sidebarOpen && <Logo showText={true} size={32} />}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-1.5 hover:bg-bg-hover rounded-lg transition-colors text-text-secondary hover:text-gold"
-        >
-          {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-        </button>
+      <div className="flex items-center justify-between p-5 border-b border-bg-border/40 bg-black/10">
+        {sidebarOpen ? (
+          <div className="flex items-center gap-3">
+            <Logo showText={false} size={28} />
+            <div className="flex flex-col">
+              <span className="text-white font-bold text-sm tracking-tight">CozyCrypto</span>
+              <span className="text-[9px] text-gold font-bold uppercase tracking-[0.2em]">AI Trader</span>
+            </div>
+          </div>
+        ) : (
+          <div className="mx-auto">
+            <Logo showText={false} size={28} />
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2">
-        <div className="space-y-1">
+      <nav className="flex-1 overflow-y-auto py-6 px-3 scrollbar-hide">
+        <div className="space-y-1.5">
           {navItems.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 group ${
                 activeTab === id
-                  ? 'bg-gold/20 text-gold border border-gold/30 shadow-glow-gold'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border border-transparent'
+                  ? 'bg-gold text-black font-bold shadow-lg shadow-gold/20'
+                  : 'text-text-secondary hover:text-white hover:bg-white/5'
               }`}
               title={!sidebarOpen ? label : ''}
             >
-              <Icon size={18} className="flex-shrink-0" />
-              {sidebarOpen && <span className="text-sm font-medium flex-1 text-left">{label}</span>}
+              <Icon size={18} className={`flex-shrink-0 ${activeTab === id ? 'text-black' : 'group-hover:text-gold transition-colors'}`} />
+              {sidebarOpen && <span className="text-sm tracking-wide">{label}</span>}
+              {activeTab === id && sidebarOpen && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-black/40" />
+              )}
             </button>
           ))}
         </div>
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-bg-border p-3 space-y-2">
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-red-trade hover:bg-bg-hover transition-colors">
-          <LogOut size={18} className="flex-shrink-0" />
-          {sidebarOpen && <span className="text-sm">Disconnect</span>}
-        </button>
+      <div className="p-4 space-y-3 bg-black/10 border-t border-bg-border/40">
         {sidebarOpen && (
-          <div className="px-3 py-2 bg-bg-secondary rounded-lg border border-bg-border">
-            <p className="text-xs text-text-muted">Status</p>
-            <p className="text-sm text-green-trade font-medium flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-trade animate-pulse-dot" />
-              Connected
+          <div className="px-4 py-3 bg-bg-secondary/50 rounded-2xl border border-bg-border/40 backdrop-blur-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldCheck size={12} className="text-green-400" />
+              <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider">Security</span>
+            </div>
+            <p className="text-[11px] text-white font-medium flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              API Connected
             </p>
           </div>
         )}
+        
+        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-text-secondary hover:text-red-400 hover:bg-red-400/5 transition-all group">
+          <LogOut size={18} className="flex-shrink-0 group-hover:rotate-180 transition-transform duration-500" />
+          {sidebarOpen && <span className="text-sm font-medium">Disconnect</span>}
+        </button>
+        
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="w-full flex items-center justify-center p-2 hover:bg-white/5 rounded-xl transition-colors text-text-muted"
+        >
+          {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+        </button>
       </div>
     </aside>
   )
