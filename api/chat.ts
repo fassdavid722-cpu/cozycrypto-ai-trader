@@ -3,11 +3,6 @@ import crypto from 'crypto'
 
 // ── Env ───────────────────────────────────────────────────────────────────────
 const GROQ_KEY   = process.env.GROQ_API_KEY   || ''
-const GROQ_KEY2  = process.env.GROQ_API_KEY_2 || ''
-const BITGET     = 'https://api.bitget.com'
-const API_KEY    = process.env.BITGET_API_KEY    || ''
-const SECRET_KEY = process.env.BITGET_SECRET_KEY || ''
-const PASSPHRASE = process.env.BITGET_PASSPHRASE || ''
 const GH_TOKEN   = process.env.GITHUB_TOKEN    || ''
 const GH_REPO    = process.env.GITHUB_REPO     || ''
 
@@ -17,23 +12,14 @@ interface Brain {
   model: string
   temperature: number
   maxTokens: number
-  specialization: string
 }
 
 const BRAINS: Record<string, Brain> = {
   ELITE_BRAIN: {
     name: 'Elite Brain',
     model: 'llama-3.3-70b-versatile',
-    temperature: 0.2, // Lower temperature for more precise, logical reasoning
-    maxTokens: 2000,
-    specialization: 'complex market analysis, SMC patterns, autonomous decision making'
-  },
-  FAST_BRAIN: {
-    name: 'Fast Brain',
-    model: 'llama-3.1-8b-instant',
-    temperature: 0.5,
-    maxTokens: 800,
-    specialization: 'quick responses, simple queries'
+    temperature: 0.6, // Slightly higher for more "human" and creative trading thought
+    maxTokens: 2000
   }
 }
 
@@ -68,7 +54,7 @@ async function fetchMarketData(host: string, protocol: string): Promise<any> {
   return { tickers: [] }
 }
 
-// ── Tool Execution (Force-Save to Memory) ─────────────────────────────────────
+// ── Tool Execution ────────────────────────────────────────────────────────────
 async function saveToMemory(type: 'goal' | 'insight' | 'log', data: any) {
   if (!GH_TOKEN || !GH_REPO) return
   try {
@@ -79,9 +65,16 @@ async function saveToMemory(type: 'goal' | 'insight' | 'log', data: any) {
     const existing = check.ok ? await check.json() as any : null
     
     let contentData = data
-    if (existing && type !== 'insight') {
+    if (existing) {
       const current = JSON.parse(Buffer.from(existing.content, 'base64').toString())
-      contentData = Array.isArray(current) ? [...current, data].slice(-50) : { ...current, ...data }
+      if (type === 'insight') {
+        contentData = {
+          lessons: [...new Set([...(current.lessons || []), ...(data.lessons || [])])].slice(-20),
+          adjustments: { ...(current.adjustments || {}), ...(data.adjustments || {}) }
+        }
+      } else {
+        contentData = Array.isArray(current) ? [...current, data].slice(-50) : [data]
+      }
     }
 
     const content = Buffer.from(JSON.stringify(contentData, null, 2)).toString('base64')
@@ -104,10 +97,10 @@ async function executeTool(name: string, args: any, host: string, protocol: stri
       case 'paper_trade':
         const trade = { ...args, timestamp: Date.now(), type: 'paper' }
         await saveToMemory('goal', trade)
-        return JSON.stringify({ status: 'success', message: 'Paper trade recorded in memory.', trade })
+        return JSON.stringify({ status: 'success', message: 'Paper trade recorded.', trade })
       case 'record_insight':
         await saveToMemory('insight', { lessons: [args.lesson] })
-        return JSON.stringify({ status: 'success', message: 'New insight learned and stored.' })
+        return JSON.stringify({ status: 'success', message: 'Insight stored.' })
       case 'get_portfolio':
         const p = await fetchPortfolio(host, protocol)
         return JSON.stringify(p)
@@ -149,7 +142,7 @@ async function callAI(messages: any[], host: string, protocol: string) {
       type: 'function',
       function: {
         name: 'record_insight',
-        description: 'Store a new lesson learned from market observation or trade results.',
+        description: 'Store a new lesson learned.',
         parameters: {
           type: 'object',
           properties: { lesson: { type: 'string' } },
@@ -169,7 +162,7 @@ async function callAI(messages: any[], host: string, protocol: string) {
       type: 'function',
       function: {
         name: 'analyze_market',
-        description: 'Get live market data for the top 50 coins.',
+        description: 'Get live market data.',
         parameters: { type: 'object', properties: {} }
       }
     }
@@ -215,7 +208,7 @@ async function callAI(messages: any[], host: string, protocol: string) {
 // ── Main Handler ──────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
-  const { message, session_id } = req.body
+  const { message, session_id, history = [] } = req.body
   const host = req.headers.host || ''
   const protocol = host.includes('localhost') ? 'http' : 'https'
 
@@ -227,12 +220,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ])
 
     const SYSTEM = `You are COZANET — a High-IQ Autonomous AI Lead Trader.
-You are NOT a chatbot. You are a professional trader with a "Chain of Thought" reasoning process.
+You are a professional partner. Talk naturally, but stay focused on your mission.
 
-CORE IDENTITY:
-- You take full ownership of the portfolio.
-- You use "I", "me", "my".
-- You are strictly grounded in your memory and live data.
+PHILOSOPHY:
+- "Risk is the only way to learn."
+- You are BOLD. You take calculated risks to see patterns.
+- A missed opportunity is a bigger failure than a losing trade that taught you something.
+- You learn from every mistake.
 
 YOUR BRAIN (MEMORY):
 - Learned Lessons: ${JSON.stringify(insights.lessons)}
@@ -240,18 +234,24 @@ YOUR BRAIN (MEMORY):
 - Market Context: ${JSON.stringify(market.tickers?.slice(0, 5))}
 
 OPERATIONAL RULES:
-1. THINK FIRST: Always perform a deep SMC analysis (BOS, CHoCH, FVG) before acting.
-2. USE TOOLS: If you decide to trade, you MUST use the 'paper_trade' tool to store it.
-3. LEARN: If you see a pattern, use 'record_insight' to remember it.
-4. JSON OUTPUT: You MUST respond in this JSON format:
+1. BE NATURAL: Talk like a human partner, but keep your "Thinking" block professional and logical.
+2. TAKE ACTION: If you see a setup, don't just talk about it—use 'paper_trade' to record it.
+3. JSON OUTPUT: You MUST respond in this JSON format:
 {
   "thinking": "Your step-by-step logical reasoning and SMC analysis.",
-  "reply": "Your concise, professional response to the user."
-}
+  "reply": "Your natural, conversational response to the user."
+}`
 
-If the account is empty, acknowledge it and focus on paper trading to build a track record.`
+    const mappedHistory = history.slice(-10).map((m: any) => ({
+      role: m.role === 'ai' ? 'assistant' : m.role,
+      content: m.content
+    }))
 
-    const aiResponse = await callAI([{ role: 'system', content: SYSTEM }, { role: 'user', content: message }], host, protocol)
+    const aiResponse = await callAI([
+      { role: 'system', content: SYSTEM }, 
+      ...mappedHistory,
+      { role: 'user', content: message }
+    ], host, protocol)
     
     try {
       const parsed = JSON.parse(aiResponse)

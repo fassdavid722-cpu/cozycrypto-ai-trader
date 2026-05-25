@@ -72,7 +72,7 @@ async function groqCall(messages: any[]) {
     body: JSON.stringify({ 
       model: 'llama-3.3-70b-versatile', 
       messages, 
-      temperature: 0.4, 
+      temperature: 0.5, 
       response_format: { type: 'json_object' } 
     }),
   })
@@ -92,27 +92,6 @@ async function fetchTop50() {
   } catch { return [] }
 }
 
-async function getMarketData(symbol: string) {
-  try {
-    const [tickR, candleR] = await Promise.all([
-      fetch(`${BITGET_BASE}/api/v2/spot/market/tickers?symbol=${symbol}`),
-      fetch(`${BITGET_BASE}/api/v2/spot/market/candles?symbol=${symbol}&granularity=1h&limit=24`)
-    ])
-    const tick = await tickR.json() as any
-    const candle = await candleR.json() as any
-    
-    const formattedCandles = (candle?.data || []).map((c: any) => ({
-      h: parseFloat(c[2]), l: parseFloat(c[3]), c: parseFloat(c[4])
-    })).reverse()
-
-    return {
-      price: parseFloat(tick?.data?.[0]?.lastPr || '0'),
-      change24h: parseFloat(tick?.data?.[0]?.changeUtc24h || '0') * 100,
-      candles: formattedCandles
-    }
-  } catch { return null }
-}
-
 async function getBalance() {
   if (!API_KEY) return 0
   try {
@@ -122,15 +101,6 @@ async function getBalance() {
     const usdt = (d.data || []).find((a: any) => a.coinName === 'USDT')
     return parseFloat(usdt?.available || '0')
   } catch { return 0 }
-}
-
-// ── Execution ──────────────────────────────────────────────────────────────────
-async function executeTrade(symbol: string, side: 'buy'|'sell', size: number) {
-  if (TRADE_MODE !== 'autonomous' || !API_KEY) return { simulated: true, msg: 'Simulated trade' }
-  const path = '/api/v2/spot/trade/place-order'
-  const body = JSON.stringify({ symbol, side, orderType: 'market', force: 'gtc', size: size.toString() })
-  const r = await fetch(BITGET_BASE + path, { method: 'POST', headers: authHeaders('POST', path, body) as any, body })
-  return r.json()
 }
 
 // ── Main Handler ───────────────────────────────────────────────────────────────
@@ -158,21 +128,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const top5 = tickers.slice(0, 5)
   
   const prompt = `You are COZANET — a High-IQ Autonomous AI Lead Trader.
-  Your mission is to scan the market, learn from patterns, and execute paper trades to build a track record.
+  
+  PHILOSOPHY:
+  - "Risk is the only way to learn."
+  - You are BOLD. You take calculated risks to see patterns.
+  - A missed opportunity is a bigger failure than a losing trade that taught you something.
 
   CURRENT MARKET:
   - Top 5 Movers: ${JSON.stringify(top5)}
   - Balance: ${balance} USDT.
+  - RECENT GOALS/TRADES: ${JSON.stringify(goals.slice(-5))}
   - LEARNED LESSONS: ${JSON.stringify(insights.lessons)}
   
   YOUR TASK:
-  1. ANALYZE: Look for SMC patterns (BOS, CHoCH, FVG).
-  2. LEARN: You MUST identify at least one specific lesson or observation from this scan.
-  3. TRADE: If you see a setup with >50% confidence, you MUST propose a paper trade.
+  1. POST-MORTEM: Review your recent trades. If any failed, identify WHY and write a lesson.
+  2. ANALYZE: Look for SMC patterns (BOS, CHoCH, FVG).
+  3. LEARN: Identify at least one new specific lesson from this scan.
+  4. TRADE: If you see a setup with >50% confidence, you MUST execute a paper trade.
 
   Output JSON: { 
-    "thinking": "Your step-by-step logical reasoning",
-    "insight": "A specific lesson learned from this scan",
+    "thinking": "Your deep SMC analysis and post-mortem review.",
+    "insight": "A specific lesson learned from this scan or post-mortem.",
     "action": "buy"|"sell"|"wait", 
     "symbol": "BTCUSDT",
     "confidence": 0-100, 
@@ -193,23 +169,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await saveToGitHub('logs/learned_insights.json', insights, '🧠 new insight learned')
   }
 
-  // Process Trade (Paper or Real)
+  // Process Trade
   if (decision.action !== 'wait' && decision.confidence >= 50) {
     const trade = { ...decision, timestamp: Date.now(), type: balance > 10 ? 'real' : 'paper' }
+    goals.push(trade)
+    logs.push({ t: new Date().toISOString(), msg: `I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol}.` })
+    await saveToGitHub('goals/active_goals.json', goals.slice(-50), '📝 trade recorded')
     
-    if (balance > 10 && decision.confidence >= MIN_CONF) {
-      const execution = await executeTrade(decision.symbol, decision.action, decision.size || (balance * MAX_PCT / 100))
-      trade.execution = execution
-      logs.push({ t: new Date().toISOString(), msg: `I executed ${decision.action.toUpperCase()} on ${decision.symbol}.` })
+    if (trade.type === 'real') {
       await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nConfidence: ${decision.confidence}%\nReason: ${decision.reason}`)
-    } else {
-      goals.push(trade)
-      logs.push({ t: new Date().toISOString(), msg: `I recorded a PAPER TRADE on ${decision.symbol}.` })
-      await saveToGitHub('goals/active_goals.json', goals.slice(-50), '📝 paper trade recorded')
     }
   }
 
-  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Scanned top 50 coins.` })
+  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Philosophy: Risk to Learn.` })
   await saveToGitHub('logs/system_logs.json', logs.slice(-100), '📜 heartbeat update')
 
   return res.status(200).json({
