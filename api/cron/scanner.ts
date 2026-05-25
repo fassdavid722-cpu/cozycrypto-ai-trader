@@ -72,7 +72,7 @@ async function groqCall(messages: any[]) {
     body: JSON.stringify({ 
       model: 'llama-3.3-70b-versatile', 
       messages, 
-      temperature: 0.5, 
+      temperature: 0.4, 
       response_format: { type: 'json_object' } 
     }),
   })
@@ -81,6 +81,16 @@ async function groqCall(messages: any[]) {
 }
 
 // ── Market Data ────────────────────────────────────────────────────────────────
+async function fetchCandles(symbol: string, granularity: string, limit: number) {
+  try {
+    const res = await fetch(`${BITGET_BASE}/api/v2/spot/market/candles?symbol=${symbol}&granularity=${granularity}&limit=${limit}`)
+    const data = await res.json() as any
+    return (data.data || []).map((c: any) => ({
+      h: parseFloat(c[2]), l: parseFloat(c[3]), c: parseFloat(c[4])
+    })).reverse()
+  } catch { return [] }
+}
+
 async function fetchTop50() {
   try {
     const res = await fetch(`${BITGET_BASE}/api/v2/spot/market/tickers`)
@@ -114,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  console.log('🚀 Starting Autonomous Heartbeat...')
+  console.log('🚀 Starting Eagle Eye Heartbeat...')
   const balance = await getBalance()
   
   // Load Memory
@@ -125,31 +135,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ])
 
   const tickers = await fetchTop50()
-  const top5 = tickers.slice(0, 5)
+  const top3 = tickers.slice(0, 3)
   
-  const prompt = `You are COZANET — a High-IQ Autonomous AI Lead Trader.
+  // Fetch Multi-Timeframe Data for Top 3
+  const marketContext = await Promise.all(top3.map(async (t: any) => {
+    const [c4h, c1h, c15m] = await Promise.all([
+      fetchCandles(t.symbol, '4h', 10),
+      fetchCandles(t.symbol, '1h', 24),
+      fetchCandles(t.symbol, '15m', 20)
+    ])
+    return { symbol: t.symbol, price: t.lastPr, c4h, c1h, c15m }
+  }))
   
+  const prompt = `You are COZANET — a High-IQ Autonomous AI Lead Trader with "Eagle Eye" Multi-Timeframe Confluence.
+
   PHILOSOPHY:
   - "Risk is the only way to learn."
-  - "The Gold" is in the patterns. You must find what works and what doesn't.
+  - "The Gold" is in the patterns.
+  - "Eagle Eye": 4H for Trend, 1H for Structure, 15m for Sniper Entry.
 
-  CURRENT MARKET:
-  - Top 5 Movers: ${JSON.stringify(top5)}
+  CURRENT MARKET (Top 3 Movers):
+  ${JSON.stringify(marketContext)}
+
+  CONTEXT:
   - Balance: ${balance} USDT.
-  - RECENT TRADES (Last 50): ${JSON.stringify(goals.slice(-50))}
-  - LEARNED LESSONS: ${JSON.stringify(insights.lessons)}
+  - RECENT TRADES: ${JSON.stringify(goals.slice(-10))}
   - HARD RULES: ${JSON.stringify(insights.rules || [])}
   
   YOUR TASK:
-  1. PATTERN AGGREGATOR: Review your last 50 trades. Identify the "Gold" (what worked) and the "Trash" (what didn't).
-  2. GENERATE RULES: If you see a recurring pattern in your wins or losses, generate a "Hard Rule" to follow.
-  3. ANALYZE: Look for SMC patterns (BOS, CHoCH, FVG).
-  4. TRADE: You MUST execute at least one paper trade from the top 50 coins to build your 200-trade dataset.
+  1. REGIME DETECTION: Is the market Trending or Ranging?
+  2. CONFLUENCE CHECK: Do the 4H, 1H, and 15m timeframes align for a trade?
+  3. PATTERN AGGREGATOR: Review your recent trades for "Gold" patterns.
+  4. TRADE: You MUST execute at least one paper trade based on this "Eagle Eye" confluence.
 
   Output JSON: { 
-    "thinking": "Your pattern analysis and rule generation logic.",
+    "thinking": "Your multi-timeframe analysis and regime detection.",
+    "regime": "Trending"|"Ranging",
+    "confluence": "High"|"Medium"|"Low",
     "new_rule": "A specific hard rule to follow (if any).",
-    "insight": "A specific lesson learned from this scan.",
     "action": "buy"|"sell", 
     "symbol": "BTCUSDT",
     "confidence": 0-100, 
@@ -160,34 +183,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }`
 
   const decision = await groqCall([
-    { role: 'system', content: 'You are an elite autonomous trader. You act proactively without waiting for prompts. Output JSON only.' },
+    { role: 'system', content: 'You are an elite autonomous trader with Eagle Eye vision. Output JSON only.' },
     { role: 'user', content: prompt }
   ])
 
   // Process Rules & Insights
   if (decision.new_rule) {
     insights.rules = [...new Set([...(insights.rules || []), decision.new_rule])].slice(-10)
-  }
-  if (decision.insight) {
-    insights.lessons = [...new Set([...insights.lessons, decision.insight])].slice(-20)
-  }
-  if (decision.new_rule || decision.insight) {
-    await saveToGitHub('logs/learned_insights.json', insights, '🧠 pattern recognition update')
+    await saveToGitHub('logs/learned_insights.json', insights, '🧠 eagle eye rule update')
   }
 
   // Process Trade
   if (decision.action && decision.symbol) {
     const trade = { ...decision, timestamp: Date.now(), type: balance > 10 ? 'real' : 'paper' }
     goals.push(trade)
-    logs.push({ t: new Date().toISOString(), msg: `I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol} to build my dataset.` })
-    await saveToGitHub('goals/active_goals.json', goals.slice(-200), '📝 trade recorded for dataset')
+    logs.push({ t: new Date().toISOString(), msg: `[Eagle Eye] I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol}. Confluence: ${decision.confluence}.` })
+    await saveToGitHub('goals/active_goals.json', goals.slice(-200), '📝 eagle eye trade recorded')
     
     if (trade.type === 'real' && decision.confidence >= MIN_CONF) {
-      await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nConfidence: ${decision.confidence}%\nReason: ${decision.reason}`)
+      await sendTelegram(`🦅 *EAGLE EYE TRADE EXECUTED*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nRegime: ${decision.regime}\nConfluence: ${decision.confluence}\nReason: ${decision.reason}`)
     }
   }
 
-  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Pattern Recognition Engine active.` })
+  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Eagle Eye Multi-Timeframe active.` })
   await saveToGitHub('logs/system_logs.json', logs.slice(-100), '📜 heartbeat update')
 
   return res.status(200).json({
