@@ -1,217 +1,156 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import crypto from 'crypto'
 
-// ── Configuration ──────────────────────────────────────────────────────────────
-const GROQ_KEY      = process.env.GROQ_API_KEY || ''
-const BITGET_BASE   = 'https://api.bitget.com'
-const API_KEY       = process.env.BITGET_API_KEY || ''
-const SECRET_KEY    = process.env.BITGET_SECRET_KEY || ''
-const PASSPHRASE    = process.env.BITGET_PASSPHRASE || ''
-const TG_TOKEN      = process.env.TELEGRAM_BOT_TOKEN || ''
-const TG_CHAT_ID    = process.env.TELEGRAM_CHAT_ID || ''
-const MIN_CONF      = parseFloat(process.env.MIN_CONFIDENCE || '55')
-const MAX_PCT       = parseFloat(process.env.MAX_TRADE_PERCENT || '10')
-const TRADE_MODE    = process.env.TRADE_MODE || 'autonomous'
-const GH_TOKEN      = process.env.GITHUB_TOKEN || ''
-const GH_REPO       = process.env.GITHUB_REPO || ''
+// --- CONFIG ---
+const WATCH_PAIRS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT']
+const MIN_CONF = 75
+const GH_TOKEN = process.env.GITHUB_TOKEN || ''
+const GH_REPO = process.env.GITHUB_REPO || ''
+const BASE_URL = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
 
-// ── Utilities ──────────────────────────────────────────────────────────────────
-function sign(ts: string, method: string, path: string, body = '') {
-  return crypto.createHmac('sha256', SECRET_KEY).update(ts + method + path + body).digest('base64')
-}
-
-function authHeaders(method: string, path: string, body = '') {
-  const ts = Date.now().toString()
-  return {
-    'ACCESS-KEY': API_KEY,
-    'ACCESS-SIGN': sign(ts, method, path, body),
-    'ACCESS-TIMESTAMP': ts,
-    'ACCESS-PASSPHRASE': PASSPHRASE,
-    'Content-Type': 'application/json',
-  }
-}
-
-async function sendTelegram(text: string) {
-  if (!TG_TOKEN || !TG_CHAT_ID) return
-  try {
-    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TG_CHAT_ID, text, parse_mode: 'Markdown' })
-    })
-  } catch (e) { console.error('Telegram error:', e) }
-}
-
-async function saveToGitHub(path: string, data: any, message: string) {
-  if (!GH_TOKEN || !GH_REPO) return
-  try {
-    const apiUrl = `https://api.github.com/repos/${GH_REPO}/contents/${path}`
-    const check = await fetch(apiUrl, { headers: { 'Authorization': `Bearer ${GH_TOKEN}` } })
-    const existing = check.ok ? await check.json() as any : null
-    const content = Buffer.from(JSON.stringify(data, null, 2)).toString('base64')
-    const body: any = { message, content }
-    if (existing?.sha) body.sha = existing.sha
-    await fetch(apiUrl, { method: 'PUT', headers: { 'Authorization': `Bearer ${GH_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  } catch (e) { console.error(`GitHub Save Error (${path}):`, e) }
-}
-
-async function loadFromGitHub(path: string): Promise<any> {
+// --- HELPERS ---
+async function ghLoad(path: string) {
   if (!GH_TOKEN || !GH_REPO) return null
   try {
-    const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${path}`, { headers: { 'Authorization': `Bearer ${GH_TOKEN}` } })
+    const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${path}`, {
+      headers: { Authorization: `Bearer ${GH_TOKEN}` },
+      signal: AbortSignal.timeout(8000)
+    })
     if (!r.ok) return null
     const d = await r.json() as any
     return JSON.parse(Buffer.from(d.content, 'base64').toString())
-  } catch (e) { return null }
+  } catch { return null }
 }
 
-async function groqCall(messages: any[]) {
-  const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      model: 'llama-3.3-70b-versatile', 
-      messages, 
-      temperature: 0.4, 
-      response_format: { type: 'json_object' } 
-    }),
-  })
-  const d = await r.json() as any
-  return JSON.parse(d.choices?.[0]?.message?.content || '{}')
-}
-
-// ── Market Data ────────────────────────────────────────────────────────────────
-async function fetchCandles(symbol: string, granularity: string, limit: number) {
+async function ghSave(path: string, data: any, msg: string) {
+  if (!GH_TOKEN || !GH_REPO) return
   try {
-    const res = await fetch(`${BITGET_BASE}/api/v2/spot/market/candles?symbol=${symbol}&granularity=${granularity}&limit=${limit}`)
-    const data = await res.json() as any
-    return (data.data || []).map((c: any) => ({
-      h: parseFloat(c[2]), l: parseFloat(c[3]), c: parseFloat(c[4])
-    })).reverse()
-  } catch { return [] }
+    const url = `https://api.github.com/repos/${GH_REPO}/contents/${path}`
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${GH_TOKEN}` } })
+    const sha = r.ok ? (await r.json() as any).sha : null
+    await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, content: Buffer.from(JSON.stringify(data, null, 2)).toString('base64'), sha })
+    })
+  } catch (e) { console.error('ghSave error:', e) }
 }
 
-async function fetchTop50() {
+async function agentCall(agent: string, body: any) {
   try {
-    const res = await fetch(`${BITGET_BASE}/api/v2/spot/market/tickers`)
-    const data = await res.json() as any
-    return (data.data || [])
-      .filter((t: any) => t.symbol.endsWith('USDT'))
-      .sort((a: any, b: any) => parseFloat(b.usdtVolume) - parseFloat(a.usdtVolume))
-      .slice(0, 50)
-  } catch { return [] }
+    const r = await fetch(`${BASE_URL}/api/agents/${agent}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000)
+    })
+    if (!r.ok) return null
+    return await r.json()
+  } catch (e) {
+    console.error(`Agent ${agent} call failed:`, e)
+    return null
+  }
+}
+
+async function getMarketData(symbol: string) {
+  try {
+    const r = await fetch(`${BASE_URL}/api/analyze?symbol=${symbol}`)
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
 }
 
 async function getBalance() {
-  if (!API_KEY) return 0
   try {
-    const path = '/api/v2/spot/account/assets'
-    const r = await fetch(BITGET_BASE + path, { headers: authHeaders('GET', path) as any })
-    const d = await r.json() as any
-    const usdt = (d.data || []).find((a: any) => a.coinName === 'USDT')
-    return parseFloat(usdt?.available || '0')
+    const r = await fetch(`${BASE_URL}/api/portfolio`)
+    if (!r.ok) return 0
+    const d = await r.json()
+    return parseFloat(d.totalUsdt || '0')
   } catch { return 0 }
 }
 
-// ── Main Handler ───────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const authHeader = req.headers['authorization']
-  const cronSecret = process.env.CRON_SECRET
-  
-  if (process.env.NODE_ENV === 'production') {
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-  }
-
-  console.log('🚀 Starting Liquidity Hunter Heartbeat...')
+  console.log('🤖 Advanced Autonomous Heartbeat Started...')
+  const startTime = Date.now()
   const balance = await getBalance()
   
-  // Load Memory
-  const [logs, insights, goals] = await Promise.all([
-    loadFromGitHub('logs/system_logs.json').then(d => d || []),
-    loadFromGitHub('logs/learned_insights.json').then(d => d || { lessons: [], rules: [] }),
-    loadFromGitHub('goals/active_goals.json').then(d => d || [])
+  const [savedLogs, insights, activeTrades] = await Promise.all([
+    ghLoad('logs/system_logs.json').then(d => Array.isArray(d) ? d : []),
+    ghLoad('logs/learned_insights.json').then(d => d || { lessons: [], detailed_reasoning: [] }),
+    ghLoad('logs/active_trades.json').then(d => Array.isArray(d) ? d : [])
   ])
 
-  const tickers = await fetchTop50()
-  const top3 = tickers.slice(0, 3)
-  
-  // Fetch Multi-Timeframe Data for Top 3
-  const marketContext = await Promise.all(top3.map(async (t: any) => {
-    const [c4h, c1h, c15m] = await Promise.all([
-      fetchCandles(t.symbol, '4h', 10),
-      fetchCandles(t.symbol, '1h', 24),
-      fetchCandles(t.symbol, '15m', 20)
-    ])
-    return { symbol: t.symbol, price: t.lastPr, c4h, c1h, c15m }
-  }))
-  
-  const prompt = `You are COZANET — a High-IQ Autonomous AI Lead Trader with "Liquidity Hunter" vision.
+  const logs: any[] = [...savedLogs]
+  const results: any[] = []
+  let tradesExecuted = 0
+  const remainingTrades: any[] = []
 
-  PHILOSOPHY:
-  - "Liquidity is the fuel."
-  - "The Gold" is in the patterns.
-  - "Eagle Eye": 4H Trend, 1H Structure, 15m Sniper Entry.
-  - "Liquidity Hunter": Identify Equal Highs/Lows and Liquidity Sweeps.
-
-  CURRENT MARKET (Top 3 Movers):
-  ${JSON.stringify(marketContext)}
-
-  CONTEXT:
-  - Balance: ${balance} USDT.
-  - RECENT TRADES: ${JSON.stringify(goals.slice(-10))}
-  - HARD RULES: ${JSON.stringify(insights.rules || [])}
-  
-  YOUR TASK:
-  1. LIQUIDITY SCAN: Identify Equal Highs (BSL) or Equal Lows (SSL).
-  2. SWEEP DETECTION: Has the price recently swept a major high or low?
-  3. INDUCEMENT CHECK: Is this a real setup or a trap for retail traders?
-  4. TRADE: You MUST execute at least one paper trade based on a Liquidity Sweep + SMC Confluence.
-
-  Output JSON: { 
-    "thinking": "Your liquidity-first analysis and sweep detection.",
-    "liquidity_zone": "BSL"|"SSL"|"None",
-    "sweep_detected": true|false,
-    "new_rule": "A specific hard rule to follow (if any).",
-    "action": "buy"|"sell", 
-    "symbol": "BTCUSDT",
-    "confidence": 0-100, 
-    "reason": "Final summary reason", 
-    "tp": price, 
-    "sl": price, 
-    "size": usdt 
-  }`
-
-  const decision = await groqCall([
-    { role: 'system', content: 'You are an elite autonomous trader and Liquidity Hunter. Output JSON only.' },
-    { role: 'user', content: prompt }
-  ])
-
-  // Process Rules & Insights
-  if (decision.new_rule) {
-    insights.rules = [...new Set([...(insights.rules || []), decision.new_rule])].slice(-10)
-    await saveToGitHub('logs/learned_insights.json', insights, '🧠 liquidity hunter rule update')
-  }
-
-  // Process Trade
-  if (decision.action && decision.symbol) {
-    const trade = { ...decision, timestamp: Date.now(), type: balance > 10 ? 'real' : 'paper' }
-    goals.push(trade)
-    logs.push({ t: new Date().toISOString(), msg: `[Liquidity Hunter] I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol}. Sweep: ${decision.sweep_detected}.` })
-    await saveToGitHub('goals/active_goals.json', goals.slice(-200), '📝 liquidity hunter trade recorded')
-    
-    if (trade.type === 'real' && decision.confidence >= MIN_CONF) {
-      await sendTelegram(`🎯 *LIQUIDITY SWEEP TRADE*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nZone: ${decision.liquidity_zone}\nSweep: ${decision.sweep_detected ? 'YES' : 'NO'}\nReason: ${decision.reason}`)
+  // 1. FEEDBACK LOOP: Evaluate Active Trades
+  for (const trade of activeTrades) {
+    const market = await getMarketData(trade.symbol)
+    if (market) {
+      const evaluation = await agentCall('evaluator', { trade, currentPrice: market.price, marketContext: market })
+      if (evaluation) {
+        if (evaluation.hard_lesson) insights.lessons.push(`[HARD LESSON] ${evaluation.hard_lesson}`)
+        logs.push({ t: new Date().toISOString(), msg: `EVALUATED ${trade.symbol}: ${evaluation.analysis}` })
+        // If trade is closed (logic for closing would go here), don't add to remainingTrades
+      }
     }
   }
 
-  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Liquidity Hunter active.` })
-  await saveToGitHub('logs/system_logs.json', logs.slice(-100), '📜 heartbeat update')
+  // 2. MAIN SCANNING LOOP
+  for (const symbol of WATCH_PAIRS) {
+    try {
+      const market = await getMarketData(symbol)
+      if (!market) continue
 
-  return res.status(200).json({
-    timestamp: new Date().toISOString(),
-    balance,
-    decision
-  })
+      const technical = await agentCall('technical', { symbol, marketData: market })
+      const sentiment = await agentCall('sentiment', { symbol, fearGreed: market.fearGreed, news: [] })
+      const risk = await agentCall('risk', { symbol, technical, sentiment, portfolio: { balance }, marketData: market })
+      const decision = await agentCall('orchestrator', { symbol, technical, sentiment, risk })
+
+      if (decision && decision.action !== 'wait' && decision.confidence >= MIN_CONF && balance >= 10) {
+        tradesExecuted++
+        const newTrade = { symbol, action: decision.action, entry: market.price, t: new Date().toISOString(), reasoning: decision.thinking }
+        remainingTrades.push(newTrade)
+        logs.push({ t: new Date().toISOString(), msg: `COLLABORATIVE ${decision.action.toUpperCase()} ${symbol} @ ${market.price} (Conf: ${decision.confidence}%)` })
+      } else {
+        logs.push({ t: new Date().toISOString(), msg: `${symbol}: Waiting (Conf: ${decision?.confidence || 0}%)` })
+      }
+
+      results.push({ symbol, technical, sentiment, risk, decision })
+      
+      if (decision && decision.thinking) {
+        insights.detailed_reasoning.push({
+          symbol,
+          thinking: decision.thinking,
+          t: new Date().toISOString(),
+          agents: { technical: technical?.reasoning, sentiment: sentiment?.reasoning, risk: risk?.reasoning }
+        })
+      }
+      if (decision && decision.new_lesson) insights.lessons.push(decision.new_lesson)
+
+    } catch (e) {
+      console.error(`Error in multi-agent flow for ${symbol}:`, e)
+    }
+  }
+
+  // 3. HEALTH MONITORING
+  const health = await agentCall('health', { status: { balance, scanned: results.length }, logs: logs.slice(-5), config: { MIN_CONF } })
+  if (health) {
+    logs.push({ t: new Date().toISOString(), msg: `HEALTH: ${health.status_report}` })
+    if (health.anomalies) logs.push({ t: new Date().toISOString(), msg: `ANOMALIES: ${JSON.stringify(health.anomalies)}` })
+  }
+
+  // Cleanup and Save
+  insights.detailed_reasoning = insights.detailed_reasoning.slice(-20)
+  insights.lessons = insights.lessons.slice(-100)
+  insights.lastUpdated = new Date().toISOString()
+
+  await Promise.all([
+    ghSave('logs/learned_insights.json', insights, '🧠 Advanced learning update'),
+    ghSave('logs/system_logs.json', logs.slice(-100), `📜 heartbeat — ${tradesExecuted} trades`),
+    ghSave('logs/active_trades.json', remainingTrades, '💼 Active trades update')
+  ])
+
+  res.status(200).json({ scanned: results.length, tradesExecuted, duration: (Date.now() - startTime)/1000, health: health?.status_report })
 }
