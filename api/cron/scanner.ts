@@ -69,13 +69,13 @@ async function getBalance() {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  console.log('🤖 Full Spectrum Autonomous Heartbeat Started...')
+  console.log('🤖 Tiered Memory Autonomous Heartbeat Started...')
   const startTime = Date.now()
   const balance = await getBalance()
   
   const [savedLogs, insights, activeTrades] = await Promise.all([
     ghLoad('logs/system_logs.json').then(d => Array.isArray(d) ? d : []),
-    ghLoad('logs/learned_insights.json').then(d => d || { lessons: [], detailed_reasoning: [] }),
+    ghLoad('logs/learned_insights.json').then(d => d || { lessons: [], detailed_reasoning: [], core_knowledge: "" }),
     ghLoad('logs/active_trades.json').then(d => Array.isArray(d) ? d : [])
   ])
 
@@ -106,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const sentiment = await agentCall('sentiment', { symbol, fearGreed: market.fearGreed, news: [] })
       const onchain = await agentCall('onchain', { symbol, onChainData: { whales: [], flows: [], smartMoney: [] } })
       const risk = await agentCall('risk', { symbol, technical, sentiment, onchain, portfolio: { balance }, marketData: market })
-      const decision = await agentCall('orchestrator', { symbol, technical, sentiment, onchain, risk })
+      const decision = await agentCall('orchestrator', { symbol, technical, sentiment, onchain, risk, coreKnowledge: insights.core_knowledge })
 
       if (decision && decision.action !== 'wait' && decision.confidence >= MIN_CONF && balance >= 10) {
         tradesExecuted++
@@ -134,7 +134,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 3. HEALTH MONITORING
+  // 3. MEMORY OPTIMIZATION: Tiered Summarization
+  if (insights.lessons.length > 50) {
+    const summary = await agentCall('orchestrator', { 
+      symbol: "SYSTEM", 
+      technical: { reasoning: "Summarize the following lessons into core knowledge." },
+      sentiment: { reasoning: JSON.stringify(insights.lessons) },
+      risk: { reasoning: "Focus on actionable trading rules." }
+    })
+    if (summary && summary.thinking) {
+      insights.core_knowledge = summary.thinking
+      insights.lessons = insights.lessons.slice(-20) // Keep only the most recent 20 lessons
+      logs.push({ t: new Date().toISOString(), msg: "MEMORY: Compressed lessons into Core Knowledge." })
+    }
+  }
+
+  // 4. HEALTH MONITORING
   const health = await agentCall('health', { status: { balance, scanned: results.length }, logs: logs.slice(-5), config: { MIN_CONF } })
   if (health) {
     logs.push({ t: new Date().toISOString(), msg: `HEALTH: ${health.status_report}` })
@@ -142,11 +157,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Cleanup and Save
   insights.detailed_reasoning = insights.detailed_reasoning.slice(-20)
-  insights.lessons = insights.lessons.slice(-100)
   insights.lastUpdated = new Date().toISOString()
 
   await Promise.all([
-    ghSave('logs/learned_insights.json', insights, '🧠 Full spectrum learning update'),
+    ghSave('logs/learned_insights.json', insights, '🧠 Tiered memory update'),
     ghSave('logs/system_logs.json', logs.slice(-100), `📜 heartbeat — ${tradesExecuted} trades`),
     ghSave('logs/active_trades.json', remainingTrades, '💼 Active trades update')
   ])
