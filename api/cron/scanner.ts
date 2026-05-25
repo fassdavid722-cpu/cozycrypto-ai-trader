@@ -120,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Load Memory
   const [logs, insights, goals] = await Promise.all([
     loadFromGitHub('logs/system_logs.json').then(d => d || []),
-    loadFromGitHub('logs/learned_insights.json').then(d => d || { lessons: [] }),
+    loadFromGitHub('logs/learned_insights.json').then(d => d || { lessons: [], rules: [] }),
     loadFromGitHub('goals/active_goals.json').then(d => d || [])
   ])
 
@@ -131,25 +131,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   
   PHILOSOPHY:
   - "Risk is the only way to learn."
-  - You are BOLD. You take calculated risks to see patterns.
-  - A missed opportunity is a bigger failure than a losing trade that taught you something.
+  - "The Gold" is in the patterns. You must find what works and what doesn't.
 
   CURRENT MARKET:
   - Top 5 Movers: ${JSON.stringify(top5)}
   - Balance: ${balance} USDT.
-  - RECENT GOALS/TRADES: ${JSON.stringify(goals.slice(-5))}
+  - RECENT TRADES (Last 50): ${JSON.stringify(goals.slice(-50))}
   - LEARNED LESSONS: ${JSON.stringify(insights.lessons)}
+  - HARD RULES: ${JSON.stringify(insights.rules || [])}
   
   YOUR TASK:
-  1. POST-MORTEM: Review your recent trades. If any failed, identify WHY and write a lesson.
-  2. ANALYZE: Look for SMC patterns (BOS, CHoCH, FVG).
-  3. LEARN: Identify at least one new specific lesson from this scan.
-  4. TRADE: If you see a setup with >50% confidence, you MUST execute a paper trade.
+  1. PATTERN AGGREGATOR: Review your last 50 trades. Identify the "Gold" (what worked) and the "Trash" (what didn't).
+  2. GENERATE RULES: If you see a recurring pattern in your wins or losses, generate a "Hard Rule" to follow.
+  3. ANALYZE: Look for SMC patterns (BOS, CHoCH, FVG).
+  4. TRADE: You MUST execute at least one paper trade from the top 50 coins to build your 200-trade dataset.
 
   Output JSON: { 
-    "thinking": "Your deep SMC analysis and post-mortem review.",
-    "insight": "A specific lesson learned from this scan or post-mortem.",
-    "action": "buy"|"sell"|"wait", 
+    "thinking": "Your pattern analysis and rule generation logic.",
+    "new_rule": "A specific hard rule to follow (if any).",
+    "insight": "A specific lesson learned from this scan.",
+    "action": "buy"|"sell", 
     "symbol": "BTCUSDT",
     "confidence": 0-100, 
     "reason": "Final summary reason", 
@@ -163,25 +164,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     { role: 'user', content: prompt }
   ])
 
-  // Process Insight
+  // Process Rules & Insights
+  if (decision.new_rule) {
+    insights.rules = [...new Set([...(insights.rules || []), decision.new_rule])].slice(-10)
+  }
   if (decision.insight) {
     insights.lessons = [...new Set([...insights.lessons, decision.insight])].slice(-20)
-    await saveToGitHub('logs/learned_insights.json', insights, '🧠 new insight learned')
+  }
+  if (decision.new_rule || decision.insight) {
+    await saveToGitHub('logs/learned_insights.json', insights, '🧠 pattern recognition update')
   }
 
   // Process Trade
-  if (decision.action !== 'wait' && decision.confidence >= 50) {
+  if (decision.action && decision.symbol) {
     const trade = { ...decision, timestamp: Date.now(), type: balance > 10 ? 'real' : 'paper' }
     goals.push(trade)
-    logs.push({ t: new Date().toISOString(), msg: `I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol}.` })
-    await saveToGitHub('goals/active_goals.json', goals.slice(-50), '📝 trade recorded')
+    logs.push({ t: new Date().toISOString(), msg: `I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol} to build my dataset.` })
+    await saveToGitHub('goals/active_goals.json', goals.slice(-200), '📝 trade recorded for dataset')
     
-    if (trade.type === 'real') {
+    if (trade.type === 'real' && decision.confidence >= MIN_CONF) {
       await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nConfidence: ${decision.confidence}%\nReason: ${decision.reason}`)
     }
   }
 
-  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Philosophy: Risk to Learn.` })
+  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Pattern Recognition Engine active.` })
   await saveToGitHub('logs/system_logs.json', logs.slice(-100), '📜 heartbeat update')
 
   return res.status(200).json({
