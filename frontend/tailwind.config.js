@@ -1,18 +1,66 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: ["class"],
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        bg: { primary: '#0A0A0F', secondary: '#111118', card: '#16161E', border: '#1E1E2A' },
-        gold: { DEFAULT: '#F4C542', dim: '#C9A227', light: '#FFD966' },
-        green: { trade: '#00D4A1', dim: '#00A87D' },
-        red: { trade: '#FF4757', dim: '#CC3344' },
-        blue: { ai: '#6C8EFF', dim: '#4A6FE3' },
-        text: { primary: '#FFFFFF', secondary: '#8888AA', muted: '#555570' }
+        border: "rgba(255, 255, 255, 0.08)",
+        input: "rgba(255, 255, 255, 0.08)",
+        ring: "#22c55e",
+        background: "#0e0e0e",
+        foreground: "#fafafa",
+        primary: {
+          DEFAULT: "#22c55e",
+          foreground: "#fafafa",
+        },
+        secondary: {
+          DEFAULT: "#171717",
+          foreground: "#fafafa",
+        },
+        destructive: {
+          DEFAULT: "#ef4444",
+          foreground: "#fafafa",
+        },
+        muted: {
+          DEFAULT: "#171717",
+          foreground: "#a1a1aa",
+        },
+        accent: {
+          DEFAULT: "#171717",
+          foreground: "#fafafa",
+        },
+        popover: {
+          DEFAULT: "#171717",
+          foreground: "#fafafa",
+        },
+        card: {
+          DEFAULT: "#171717",
+          foreground: "#fafafa",
+        },
+        sidebar: {
+          DEFAULT: "#111111",
+          foreground: "#a1a1aa",
+          primary: "#22c55e",
+          "primary-foreground": "#ffffff",
+          accent: "#171717",
+          "accent-foreground": "#fafafa",
+          border: "rgba(255, 255, 255, 0.08)",
+          ring: "#22c55e",
+        },
       },
-      fontFamily: { mono: ['JetBrains Mono', 'monospace'], sans: ['Inter', 'sans-serif'] }
-    }
+      borderRadius: {
+        xl: "12px",
+        lg: "8px",
+        md: "6px",
+        sm: "4px",
+        xs: "2px",
+      },
+      fontFamily: {
+        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', 'sans-serif']
+      }
+    },
   },
-  plugins: []
+  plugins: [require("tailwindcss-animate")],
 }

@@ -1,56 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+@layer base {
+  :root {
+    --background: 0 0% 5.5%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 142 71% 45%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 6.7%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 142 71% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 142 71% 45%;
+  }
 
-body {
-  background: #0A0A0F;
-  color: #FFFFFF;
-  font-family: 'Inter', sans-serif;
-  overflow-x: hidden;
+  body {
+    @apply bg-[#0e0e0e] text-[#fafafa] antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  * {
+    @apply border-[rgba(255,255,255,0.08)];
+  }
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #111118; }
-::-webkit-scrollbar-thumb { background: #2A2A3A; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #F4C542; }
+@layer components {
+  .font-mono-data {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
 
-.glass {
-  background: rgba(22, 22, 30, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.06);
-}
+  .panel-surface {
+    @apply bg-[#171717] border border-[rgba(255,255,255,0.08)] rounded-lg;
+  }
 
-.glow-gold { box-shadow: 0 0 20px rgba(244, 197, 66, 0.15); }
-.glow-green { box-shadow: 0 0 20px rgba(0, 212, 161, 0.15); }
-.glow-red { box-shadow: 0 0 20px rgba(255, 71, 87, 0.15); }
+  .panel-elevated {
+    @apply bg-[#1f1f1f] border border-[rgba(255,255,255,0.15)] rounded-lg;
+  }
 
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-.pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+  .text-primary {
+    color: #fafafa;
+  }
 
-@keyframes ticker {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-.ticker-track { animation: ticker 30s linear infinite; }
+  .text-secondary {
+    color: #a1a1aa;
+  }
 
-.ai-thinking {
-  background: linear-gradient(90deg, #6C8EFF, #F4C542, #00D4A1, #6C8EFF);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shine 2s linear infinite;
-}
-@keyframes shine {
-  to { background-position: 200% center; }
-}
+  .text-tertiary {
+    color: #52525b;
+  }
 
-.candlestick-logo {
-  position: relative;
-  width: 32px;
-  height: 32px;
+  .accent-green {
+    color: #22c55e;
+  }
+
+  .accent-red {
+    color: #ef4444;
+  }
+
+  .accent-blue {
+    color: #3b82f6;
+  }
+
+  .bg-pill {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .border-glow {
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+
+  .conic-ring {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: conic-gradient(from 180deg, #171717 0%, #2a2a2a 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+  }
+
+  .conic-ring::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    z-index: -1;
+    background: conic-gradient(from 180deg, #22c55e 0%, #3b82f6 50%, #22c55e 100%);
+  }
+
+  .conic-fill {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: conic-gradient(from 180deg, rgba(34, 197, 94, 0.8) 0%, rgba(23, 23, 23, 0.2) 60%, rgba(23, 23, 23, 1) 100%);
+    mask: radial-gradient(transparent 55%, black 56%);
+    -webkit-mask: radial-gradient(transparent 55%, black 56%);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+  }
 }

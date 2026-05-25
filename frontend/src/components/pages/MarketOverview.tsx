@@ -1,66 +1,105 @@
-import React, { useState } from 'react'
-import { TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
 import { useStore } from '@/store/useStore'
-import Card from '@/components/ui/Card'
-import MiniChart from '@/components/ui/MiniChart'
+import TopBar from '../TopBar'
+import { TrendingUp, TrendingDown, Search, Filter } from 'lucide-react'
+import { LineChart, Line, ResponsiveContainer } from 'recharts'
 
 export default function MarketOverview() {
   const { tickers } = useStore()
-  const [filter, setFilter] = useState<'all' | 'gainers' | 'losers'>('all')
-
-  const filtered = tickers.filter(t =>
-    filter === 'gainers' ? t.change24h > 0 :
-    filter === 'losers' ? t.change24h < 0 : true
-  )
 
   return (
-    <div className="h-full overflow-y-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-white font-semibold text-lg">Market Overview</h2>
-        <div className="flex gap-2">
-          {['all','gainers','losers'].map(f => (
-            <button key={f} onClick={() => setFilter(f as any)}
-              className={`px-3 py-1 rounded-lg text-xs capitalize transition-colors ${filter === f ? 'bg-gold text-black font-semibold' : 'bg-bg-card text-text-secondary hover:text-white border border-bg-border'}`}>
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="p-6 min-h-full">
+      <TopBar title="Market Overview" subtitle="Real-time market data and AI insights" />
 
-      <div className="grid grid-cols-1 gap-2">
-        {/* Header */}
-        <div className="grid grid-cols-6 px-4 py-2 text-[10px] text-text-muted uppercase tracking-wider">
-          <span>Pair</span><span className="text-right">Price</span>
-          <span className="text-right">24h Change</span><span className="text-right">24h High</span>
-          <span className="text-right">24h Low</span><span className="text-right">Chart</span>
-        </div>
-        {filtered.length === 0 ? (
-          <Card><p className="text-text-muted text-sm text-center py-8">Loading market data...</p></Card>
-        ) : filtered.map(t => (
-          <Card key={t.symbol} className="py-2" onClick={() => {}}>
-            <div className="grid grid-cols-6 items-center">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center">
-                  <span className="text-gold text-[10px] font-bold">{t.symbol.split('/')[0].slice(0,3)}</span>
-                </div>
-                <div>
-                  <p className="text-white text-xs font-medium">{t.symbol.split('/')[0]}</p>
-                  <p className="text-text-muted text-[10px]">{t.symbol.split('/')[1]}</p>
-                </div>
-              </div>
-              <p className="text-white text-sm font-mono text-right">${t.price.toLocaleString()}</p>
-              <div className={`flex items-center justify-end gap-1 ${t.change24h >= 0 ? 'text-green-trade' : 'text-red-trade'}`}>
-                {t.change24h >= 0 ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
-                <span className="text-xs font-mono">{t.change24h >= 0 ? '+' : ''}{t.change24h.toFixed(2)}%</span>
-              </div>
-              <p className="text-text-secondary text-xs font-mono text-right">${t.high24h.toLocaleString()}</p>
-              <p className="text-text-secondary text-xs font-mono text-right">${t.low24h.toLocaleString()}</p>
-              <div className="flex justify-end">
-                <MiniChart data={t.sparkline || []} color={t.change24h >= 0 ? '#00D4A1' : '#FF4757'} />
-              </div>
+      <div className="panel-surface overflow-hidden">
+        <div className="p-4 border-b border-[rgba(255,255,255,0.05)] flex items-center justify-between bg-[rgba(255,255,255,0.02)]">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#52525b]" />
+              <input
+                type="text"
+                placeholder="Search pairs..."
+                className="bg-[#1f1f1f] border border-[rgba(255,255,255,0.08)] rounded-lg pl-9 pr-4 py-1.5 text-xs text-[#fafafa] outline-none focus:border-[rgba(34,197,94,0.3)] w-64"
+              />
             </div>
-          </Card>
-        ))}
+            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1f1f1f] border border-[rgba(255,255,255,0.08)] text-xs text-[#a1a1aa] hover:text-[#fafafa]">
+              <Filter size={14} />
+              Filter
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold">Sort by:</span>
+            <select className="bg-transparent text-xs text-[#a1a1aa] outline-none cursor-pointer hover:text-[#fafafa]">
+              <option>Volume (24h)</option>
+              <option>Price Change</option>
+              <option>Market Cap</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-[#52525b] border-b border-[rgba(255,255,255,0.05)]">
+                <th className="px-6 py-4 font-medium">Asset</th>
+                <th className="px-6 py-4 font-medium">Price</th>
+                <th className="px-6 py-4 font-medium">24h Change</th>
+                <th className="px-6 py-4 font-medium">24h Volume</th>
+                <th className="px-6 py-4 font-medium">Last 24h</th>
+                <th className="px-6 py-4 font-medium text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[rgba(255,255,255,0.05)]">
+              {tickers.map((ticker) => (
+                <tr key={ticker.symbol} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-[#1f1f1f] flex items-center justify-center border border-[rgba(255,255,255,0.05)]">
+                        <span className="text-[10px] font-bold text-[#fafafa]">{ticker.symbol.split('/')[0]}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-[#fafafa]">{ticker.symbol}</p>
+                        <p className="text-[10px] text-[#52525b]">Spot Trading</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 font-mono-data text-[#fafafa]">
+                    $${ticker.price.toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className={`flex items-center gap-1 font-mono-data ${ticker.change24h >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                      {ticker.change24h >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                      {ticker.change24h >= 0 ? '+' : ''}{ticker.change24h}%
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-[#a1a1aa] font-mono-data">
+                    $${(ticker.volume / 1000000).toFixed(2)}M
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="w-24 h-8">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={(ticker.sparkline || []).map((v, i) => ({ i, v }))}>
+                          <Line
+                            type="monotone"
+                            dataKey="v"
+                            stroke={ticker.change24h >= 0 ? '#22c55e' : '#ef4444'}
+                            strokeWidth={1.5}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button className="px-3 py-1.5 rounded-lg bg-[#1f1f1f] border border-[rgba(255,255,255,0.08)] text-[10px] text-[#fafafa] hover:bg-[#22c55e] hover:border-[#22c55e] transition-all uppercase tracking-widest font-bold">
+                      Trade
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

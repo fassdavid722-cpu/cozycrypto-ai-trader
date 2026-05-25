@@ -1,13 +1,13 @@
 import React, { useEffect } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
-import Topbar from '@/components/layout/Topbar'
-import AIModeBar from '@/components/layout/AIModeBar'
 import Dashboard from '@/components/pages/Dashboard'
 import MarketOverview from '@/components/pages/MarketOverview'
 import Portfolio from '@/components/pages/Portfolio'
 import AIChat from '@/components/pages/AIChat'
 import Workflows from '@/components/pages/Workflows'
 import Settings from '@/components/pages/Settings'
+import Positions from '@/components/pages/Positions'
+import Orders from '@/components/pages/Orders'
 import { useStore } from '@/store/useStore'
 import { useSSE } from '@/hooks/useSSE'
 
@@ -21,6 +21,8 @@ function PageContent() {
     case 'market':      return <MarketOverview />
     case 'portfolio':   return <Portfolio />
     case 'workflows':   return <Workflows />
+    case 'positions':   return <Positions />
+    case 'orders':      return <Orders />
     case 'settings':    return <Settings />
     default:            return <Dashboard />
   }
@@ -40,7 +42,11 @@ export default function App() {
 
     const marketInterval = setInterval(fetchMarketData, 15000)
     const portfolioInterval = setInterval(fetchPortfolio, 30000)
-    return () => { clearInterval(marketInterval); clearInterval(portfolioInterval) }
+
+    return () => { 
+      clearInterval(marketInterval)
+      clearInterval(portfolioInterval) 
+    }
   }, [])
 
   const fetchMarketData = async () => {
@@ -48,14 +54,13 @@ export default function App() {
       const res = await fetch(`${API}/api/market/tickers`)
       if (res.ok) {
         const data = await res.json()
-        // Map snake_case from Python backend
         const tickers = (data.tickers || []).map((t: any) => ({
           symbol:    t.symbol,
           price:     t.price,
-          change24h: t.change_24h,
+          change24h: t.change24h,
           volume:    t.volume,
-          high24h:   t.high_24h,
-          low24h:    t.low_24h,
+          high24h:   t.high24h,
+          low24h:    t.low24h,
           sparkline: t.sparkline || [],
         }))
         setTickers(tickers)
@@ -97,15 +102,11 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen bg-bg-primary overflow-hidden">
+    <div className="flex h-screen w-screen bg-[#0e0e0e] overflow-hidden">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar />
-        <main className="flex-1 overflow-hidden p-4">
-          <PageContent />
-        </main>
-        <AIModeBar />
-      </div>
+      <main className="flex-1 overflow-auto">
+        <PageContent />
+      </main>
     </div>
   )
 }

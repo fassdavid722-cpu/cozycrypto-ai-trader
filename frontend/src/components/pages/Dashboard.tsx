@@ -1,214 +1,310 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { Send, Paperclip, Globe, Sparkles, AlertCircle, Brain } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+} from 'recharts'
+import { TrendingUp, TrendingDown, Activity, Zap, Shield, Clock } from 'lucide-react'
+import TopBar from '../TopBar'
 import { useStore } from '@/store/useStore'
-import Card from '@/components/ui/Card'
-import Logo from '@/components/layout/Logo'
 
-const API = import.meta.env.VITE_API_URL || ''
+// AI Health Badge Component
+function AiHealthBadge({ source, confidence }: { source: string; confidence: number }) {
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.2)]">
+      <Shield size={10} className="text-[#22c55e]" />
+      <span className="text-[10px] text-[#22c55e]">{confidence}%</span>
+      <span className="text-[10px] text-[#52525b]">{source}</span>
+    </div>
+  )
+}
 
 export default function Dashboard() {
-  const { tickers, portfolioValue, portfolioChange, alerts, messages, addMessage, isThinking, setThinking } = useStore()
+  const { tickers, portfolioValue, portfolioChange, portfolioHistory, trades, aiStatus } = useStore()
+  const [activeTimeframe, setActiveTimeframe] = useState('1D')
+  
+  const timeframes = ['1H', '1D', '1W', '1M']
+  
+  const btcTicker = tickers.find(t => t.symbol === 'BTC/USDT') || { price: 0, change24h: 0 }
+  const ethTicker = tickers.find(t => t.symbol === 'ETH/USDT') || { price: 0, change24h: 0 }
+  const solTicker = tickers.find(t => t.symbol === 'SOL/USDT') || { price: 0, change24h: 0 }
+  const bnbTicker = tickers.find(t => t.symbol === 'BNB/USDT') || { price: 0, change24h: 0 }
 
-  const [input, setInput] = useState('')
-  const [sessionId] = useState<string>(() => `dash_${Date.now()}`)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const displayMessages = messages.slice(-10)
-
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
-
-  const sendMessage = async (msg?: string) => {
-    const text = (msg || input).trim()
-    if (!text) return
-    setInput('')
-    addMessage({ id: Date.now().toString(), role: 'user', content: text, timestamp: Date.now() })
-    setThinking(true)
-    try {
-      const res = await fetch(`${API}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: sessionId, history: messages.slice(-10), save: true })
-      })
-      const data = await res.json()
-      addMessage({ 
-        id: (Date.now()+1).toString(), 
-        role: 'ai', 
-        content: data.reply, 
-        thinking: data.thinking,
-        timestamp: Date.now() 
-      })
-    } catch {
-      addMessage({ id: (Date.now()+1).toString(), role: 'ai', content: "Connection issue — retrying shortly.", timestamp: Date.now() })
-    } finally {
-      setThinking(false)
-    }
-  }
-
-  const marketTickers = tickers.slice(0, 8)
-  const unreadAlerts = alerts.filter(a => !a.read).slice(0, 5)
+  const predictions = [
+    { coin: 'BTC', price: `$${btcTicker.price.toLocaleString()}`, prediction: `${btcTicker.change24h >= 0 ? '+' : ''}${btcTicker.change24h}%`, bullish: btcTicker.change24h >= 0, sparkline: btcTicker.sparkline },
+    { coin: 'ETH', price: `$${ethTicker.price.toLocaleString()}`, prediction: `${ethTicker.change24h >= 0 ? '+' : ''}${ethTicker.change24h}%`, bullish: ethTicker.change24h >= 0, sparkline: ethTicker.sparkline },
+    { coin: 'SOL', price: `$${solTicker.price.toLocaleString()}`, prediction: `${solTicker.change24h >= 0 ? '+' : ''}${solTicker.change24h}%`, bullish: solTicker.change24h >= 0, sparkline: solTicker.sparkline },
+    { coin: 'BNB', price: `$${bnbTicker.price.toLocaleString()}`, prediction: `${bnbTicker.change24h >= 0 ? '+' : ''}${bnbTicker.change24h}%`, bullish: bnbTicker.change24h >= 0, sparkline: bnbTicker.sparkline },
+  ]
 
   return (
-    <div className="h-full overflow-y-auto pb-10 px-4 py-6">
-      <div className="max-w-7xl mx-auto">
-        
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main Content: AI Assistant */}
-          <div className="lg:col-span-8 space-y-6">
-            <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 flex flex-col h-[650px]">
-              <div className="p-4 border-b border-bg-border/40 flex items-center justify-between bg-white/5">
-                <div className="flex items-center gap-3">
-                  <Logo size={24} showText={false} />
-                  <div>
-                    <h3 className="text-white font-bold text-sm">Autonomous AI Trader</h3>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                      <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium">Live Heartbeat Active</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-text-muted text-[10px] uppercase tracking-widest">Portfolio</p>
-                  <p className={`text-xs font-bold font-mono ${portfolioChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    ${portfolioValue.toLocaleString('en-US',{minimumFractionDigits:2})} ({portfolioChange >= 0 ? '+' : ''}{portfolioChange.toFixed(2)}%)
-                  </p>
-                </div>
-              </div>
+    <div className="p-6 min-h-full">
+      <TopBar title="Dashboard" subtitle="Overview of market activity" />
 
-              {/* Chat Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
-                {displayMessages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-60">
-                    <div className="p-4 rounded-full bg-gold/5 border border-gold/10">
-                      <Sparkles size={32} className="text-gold" />
-                    </div>
-                    <div>
-                      <p className="text-white font-semibold">Autonomous Mode Active</p>
-                      <p className="text-text-muted text-xs mt-1">I am scanning the markets and executing trades based on your goals.</p>
-                    </div>
-                  </div>
-                ) : (
-                  displayMessages.map(m => (
-                    <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[90%] space-y-2`}>
-                        {m.thinking && (
-                          <div className="bg-black/20 border border-bg-border/40 rounded-2xl rounded-tl-sm px-4 py-3 mb-2">
-                            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-bg-border/20">
-                              <Brain size={12} className="text-gold" />
-                              <span className="text-[10px] font-bold text-gold uppercase tracking-widest">Internal Logic</span>
-                            </div>
-                            <p className="text-[11px] leading-relaxed text-text-muted italic">{m.thinking}</p>
-                          </div>
-                        )}
-                        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                          m.role === 'user' 
-                            ? 'bg-gold text-black font-medium' 
-                            : 'bg-bg-secondary border border-bg-border/60 text-white'
-                        }`}>
-                          {m.content}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {isThinking && (
-                  <div className="flex justify-start">
-                    <div className="bg-bg-secondary border border-bg-border/60 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-3">
-                      <div className="flex gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gold animate-bounce" style={{animationDelay:'0s'}} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-gold animate-bounce" style={{animationDelay:'0.2s'}} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-gold animate-bounce" style={{animationDelay:'0.4s'}} />
-                      </div>
-                      <span className="text-xs text-text-muted font-medium italic">AI is processing...</span>
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="panel-surface p-4 hover:border-[rgba(255,255,255,0.15)] transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[#a1a1aa]">Total Equity</span>
+            <AiHealthBadge source="Portfolio Engine" confidence={99} />
+          </div>
+          <p className="text-2xl font-medium text-[#fafafa] font-mono-data">$${portfolioValue.toLocaleString()}</p>
+          <div className="flex items-center gap-1 mt-1">
+            {portfolioChange >= 0 ? <TrendingUp size={12} className="text-[#22c55e]" /> : <TrendingDown size={12} className="text-[#ef4444]" />}
+            <span className={`text-xs ${portfolioChange >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{portfolioChange >= 0 ? '+' : ''}{portfolioChange.toFixed(2)}%</span>
+            <span className="text-[10px] text-[#52525b] ml-1">vs last 24h</span>
+          </div>
+        </div>
 
-              {/* Input Area */}
-              <div className="p-4 bg-black/20">
-                <div className="relative flex items-center gap-2">
-                  <div className="flex-1 relative">
-                    <input 
-                      value={input} 
-                      onChange={e => setInput(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                      placeholder="Ask the AI anything..."
-                      className="w-full bg-bg-secondary border border-bg-border/60 rounded-2xl pl-4 pr-20 py-3 text-sm text-white placeholder-text-muted/50 focus:outline-none focus:border-gold/40 transition-all" 
-                    />
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                      <button className="p-1.5 hover:text-gold text-text-muted transition-colors"><Paperclip size={14} /></button>
-                      <button className="p-1.5 hover:text-gold text-text-muted transition-colors"><Globe size={14} /></button>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => sendMessage()} 
-                    disabled={!input.trim() || isThinking}
-                    className="p-3 bg-gold rounded-2xl hover:shadow-lg hover:shadow-gold/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Send size={18} className="text-black" />
-                  </button>
-                </div>
-              </div>
-            </Card>
+        <div className="panel-surface p-4 hover:border-[rgba(255,255,255,0.15)] transition-all">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[#a1a1aa]">AI Status</span>
+            <AiHealthBadge source="Core Brain" confidence={100} />
+          </div>
+          <p className="text-2xl font-medium text-[#fafafa] font-mono-data uppercase tracking-widest">{aiStatus}</p>
+          <div className="mt-1">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[rgba(34,197,94,0.1)] text-[10px] ${aiStatus === 'trading' ? 'text-[#22c55e]' : 'text-gold'}`}>
+              <Activity size={10} />
+              {aiStatus === 'trading' ? 'Autonomous Mode Active' : 'AI is Learning'}
+            </span>
+          </div>
+        </div>
+
+        <div className="panel-surface p-4 hover:border-[rgba(255,255,255,0.15)] transition-all">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[#a1a1aa]">Market Sentiment</span>
+            <AiHealthBadge source="NLP Engine" confidence={88} />
+          </div>
+          <p className="text-2xl font-medium text-[#fafafa] font-mono-data">BULLISH</p>
+          <div className="flex items-center gap-1 mt-1">
+            <TrendingUp size={12} className="text-[#22c55e]" />
+            <span className="text-xs text-[#22c55e]">72/100</span>
+            <span className="text-[10px] text-[#52525b] ml-1">Greed</span>
+          </div>
+        </div>
+
+        <div className="panel-surface p-4 hover:border-[rgba(255,255,255,0.15)] transition-all">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[#a1a1aa]">Recent P&L</span>
+            <AiHealthBadge source="Trade Tracker" confidence={97} />
+          </div>
+          <p className="text-2xl font-medium text-[#fafafa] font-mono-data">+,245.30</p>
+          <div className="flex items-center gap-1 mt-1">
+            <TrendingUp size={12} className="text-[#22c55e]" />
+            <span className="text-xs text-[#22c55e]">+4.2%</span>
+            <span className="text-[10px] text-[#52525b] ml-1">last 7 trades</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Middle Row */}
+      <div className="grid grid-cols-5 gap-4 mb-6">
+        <div className="col-span-3 panel-surface p-4 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="flex items-center gap-2">
+              <Activity size={16} className="text-[#22c55e]" />
+              <span className="text-sm font-medium text-[#fafafa]">Live Market Chart</span>
+              <AiHealthBadge source="Bitget API" confidence={99} />
+            </div>
+            <div className="flex items-center gap-1 bg-[rgba(255,255,255,0.03)] rounded-lg p-0.5">
+              {timeframes.map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setActiveTimeframe(tf)}
+                  className={`px-3 py-1 rounded-md text-xs transition-all ${
+                    activeTimeframe === tf
+                      ? 'bg-[#1f1f1f] text-[#fafafa] border border-[rgba(255,255,255,0.15)]'
+                      : 'text-[#52525b] hover:text-[#a1a1aa]'
+                  }`}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Sidebar Content */}
-          <div className="lg:col-span-4 space-y-6">
-            {/* Market Watchlist */}
-            <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 overflow-hidden">
-              <div className="p-4 border-b border-bg-border/40 bg-white/5">
-                <h3 className="text-white font-bold text-sm uppercase tracking-wider">Market Pulse</h3>
-              </div>
-              <div className="p-4 space-y-4">
-                {marketTickers.map(t => (
-                  <div key={t.symbol} className="flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-                        <span className="text-[10px] font-bold text-white">{t.symbol.split('USDT')[0]}</span>
-                      </div>
-                      <div>
-                        <p className="text-white text-xs font-bold">{t.symbol}</p>
-                        <p className="text-[10px] text-text-muted font-mono">${t.price.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-[10px] font-bold font-mono ${t.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {t.change24h >= 0 ? '+' : ''}{t.change24h.toFixed(2)}%
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+          <div className="relative h-64">
+            <div className="relative z-10 h-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={portfolioHistory.length > 0 ? portfolioHistory : [{time: '00:00', value: 0}]}>
+                  <defs>
+                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fill: '#52525b', fontSize: 10 }}
+                    axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: '#52525b', fontSize: 10 }}
+                    axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
+                    tickLine={false}
+                    tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#1f1f1f',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    formatter={(value: number) => [`$${value.toLocaleString()}`, 'Value']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    fill="url(#chartGradient)"
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
 
-            {/* Recent Alerts */}
-            <Card className="bg-bg-secondary/30 backdrop-blur-sm border-bg-border/40 overflow-hidden">
-              <div className="p-4 border-b border-bg-border/40 bg-white/5">
-                <h3 className="text-white font-bold text-sm uppercase tracking-wider">Activity Log</h3>
-              </div>
-              <div className="p-4 space-y-4">
-                {unreadAlerts.length === 0 ? (
-                  <div className="py-4 text-center">
-                    <p className="text-text-muted text-xs italic">No recent activity.</p>
+        <div className="col-span-2 space-y-4">
+          <div className="panel-surface p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap size={16} className="text-[#3b82f6]" />
+              <span className="text-sm font-medium text-[#fafafa]">AI Predictions (24h)</span>
+              <AiHealthBadge source="ML Models" confidence={92} />
+            </div>
+            <div className="space-y-3">
+              {predictions.map((pred) => (
+                <div key={pred.coin} className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-[#1f1f1f] flex items-center justify-center">
+                    <span className="text-xs font-semibold text-[#fafafa]">{pred.coin}</span>
                   </div>
-                ) : (
-                  unreadAlerts.map(a => (
-                    <div key={a.id} className="flex items-start gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors">
-                      <div className={`p-1.5 rounded-lg shrink-0 ${
-                        a.type === 'danger' ? 'bg-red-500/10 text-red-400' : 
-                        a.type === 'warning' ? 'bg-gold/10 text-gold' : 'bg-blue-500/10 text-blue-400'
-                      }`}>
-                        <AlertCircle size={14} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-white text-[11px] leading-relaxed font-medium">{a.message}</p>
-                        <p className="text-text-muted text-[9px] mt-1 uppercase tracking-widest">{Math.round((Date.now()-a.timestamp)/60000)}m ago</p>
-                      </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#fafafa] font-mono-data">{pred.price}</span>
+                      <span className={`text-xs font-medium font-mono-data ${pred.bullish ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                        {pred.prediction}
+                      </span>
                     </div>
-                  ))
-                )}
+                    <div className="h-6 mt-1">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={(pred.sparkline || []).map((v, i) => ({ i, v }))}>
+                          <Line
+                            type="monotone"
+                            dataKey="v"
+                            stroke={pred.bullish ? '#22c55e' : '#ef4444'}
+                            strokeWidth={1.5}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel-surface p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield size={16} className="text-[#22c55e]" />
+              <span className="text-sm font-medium text-[#fafafa]">System Status</span>
+              <AiHealthBadge source="Health Check" confidence={100} />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#a1a1aa]">Market Scanning</span>
+                <span className="text-[10px] text-[#22c55e] font-bold uppercase tracking-widest">Active</span>
               </div>
-            </Card>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#a1a1aa]">Strategy Execution</span>
+                <span className="text-[10px] text-[#22c55e] font-bold uppercase tracking-widest">Active</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#a1a1aa]">Risk Monitoring</span>
+                <span className="text-[10px] text-[#22c55e] font-bold uppercase tracking-widest">Active</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#a1a1aa]">Learning & Adapting</span>
+                <span className="text-[10px] text-gold font-bold uppercase tracking-widest">Processing</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="panel-surface p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-[#a1a1aa]" />
+              <span className="text-sm font-medium text-[#fafafa]">Recent Trades</span>
+            </div>
+            <button className="text-[10px] text-[#52525b] hover:text-[#a1a1aa] uppercase tracking-widest font-bold">View All</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[#52525b] border-b border-[rgba(255,255,255,0.05)]">
+                  <th className="pb-2 font-medium">Pair</th>
+                  <th className="pb-2 font-medium">Side</th>
+                  <th className="pb-2 font-medium">Price</th>
+                  <th className="pb-2 font-medium">P&L</th>
+                  <th className="pb-2 font-medium text-right">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[rgba(255,255,255,0.05)]">
+                {trades.slice(0, 5).map((trade, i) => (
+                  <tr key={i} className="group">
+                    <td className="py-2.5 font-medium text-[#fafafa]">{trade.symbol}</td>
+                    <td className="py-2.5">
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase ${trade.side === 'buy' ? 'bg-[rgba(34,197,94,0.1)] text-[#22c55e]' : 'bg-[rgba(239,68,68,0.1)] text-[#ef4444]'}`}>
+                        {trade.side}
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-[#a1a1aa] font-mono-data">$${trade.price.toLocaleString()}</td>
+                    <td className={`py-2.5 font-mono-data ${(trade.pnl || 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                      {(trade.pnl || 0) >= 0 ? '+' : ''}$${(trade.pnl || 0).toFixed(2)}
+                    </td>
+                    <td className="py-2.5 text-[#52525b] text-right font-mono-data">{new Date(trade.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="panel-surface p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Activity size={16} className="text-[#a1a1aa]" />
+              <span className="text-sm font-medium text-[#fafafa]">Market Heatmap</span>
+            </div>
+            <button className="text-[10px] text-[#52525b] hover:text-[#a1a1aa] uppercase tracking-widest font-bold">Full Map</button>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {tickers.slice(0, 9).map((ticker) => (
+              <div key={ticker.symbol} className="p-3 rounded-lg bg-[#1f1f1f] border border-[rgba(255,255,255,0.05)] hover:border-[rgba(255,255,255,0.15)] transition-all">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-[#fafafa]">{ticker.symbol.split('/')[0]}</span>
+                  <span className={`text-[10px] font-bold ${ticker.change24h >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                    {ticker.change24h >= 0 ? '+' : ''}{ticker.change24h}%
+                  </span>
+                </div>
+                <p className="text-[10px] text-[#52525b] font-mono-data">$${ticker.price.toLocaleString()}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

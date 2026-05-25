@@ -1,95 +1,149 @@
-import React from 'react'
-import { TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
-import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { useStore } from '@/store/useStore'
-import Card from '@/components/ui/Card'
+import TopBar from '../TopBar'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { Wallet, ArrowUpRight, ArrowDownRight, MoreHorizontal } from 'lucide-react'
 
 export default function Portfolio() {
-  const { portfolioValue, portfolioChange, portfolioHistory, trades, balance } = useStore()
+  const { portfolioValue, portfolioChange, balance, tickers } = useStore()
 
-  const closedTrades = trades.filter(t => t.status === 'closed')
-  const openTrades = trades.filter(t => t.status === 'open')
-  const totalPnL = closedTrades.reduce((acc, t) => acc + (t.pnl || 0), 0)
+  const data = [
+    { name: 'BTC', value: 45, color: '#F7931A' },
+    { name: 'ETH', value: 30, color: '#627EEA' },
+    { name: 'SOL', value: 15, color: '#14F195' },
+    { name: 'USDT', value: 10, color: '#26A17B' },
+  ]
 
   return (
-    <div className="h-full overflow-y-auto space-y-4">
-      <h2 className="text-white font-semibold text-lg">Portfolio</h2>
+    <div className="p-6 min-h-full">
+      <TopBar title="Portfolio" subtitle="Asset allocation and performance" />
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: 'Total Value', value: `$${portfolioValue.toFixed(2)}`, sub: `${portfolioChange >= 0 ? '+' : ''}${portfolioChange.toFixed(2)}% today`, color: portfolioChange >= 0 ? 'text-green-trade' : 'text-red-trade' },
-          { label: 'Available Balance', value: `$${balance.toFixed(2)}`, sub: 'Bitget', color: 'text-text-secondary' },
-          { label: 'Open Trades', value: openTrades.length.toString(), sub: 'Active positions', color: 'text-blue-ai' },
-          { label: 'Total P&L', value: `${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`, sub: 'All time', color: totalPnL >= 0 ? 'text-green-trade' : 'text-red-trade' },
-        ].map(s => (
-          <Card key={s.label}>
-            <p className="text-text-muted text-[10px] uppercase tracking-wider mb-1">{s.label}</p>
-            <p className="text-white text-xl font-bold font-mono">{s.value}</p>
-            <p className={`text-xs mt-1 ${s.color}`}>{s.sub}</p>
-          </Card>
-        ))}
-      </div>
-
-      {/* Chart */}
-      <Card>
-        <p className="text-white text-xs font-semibold uppercase tracking-wider mb-3">Portfolio Performance</p>
-        <div className="h-48">
-          {portfolioHistory.length > 1 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={portfolioHistory}>
-                <defs>
-                  <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00D4A1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#00D4A1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2A" />
-                <XAxis dataKey="time" tick={{ fill: '#555570', fontSize: 10 }} />
-                <YAxis tick={{ fill: '#555570', fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: '#16161E', border: '1px solid #1E1E2A', borderRadius: 8, fontSize: 11 }} />
-                <Area type="monotone" dataKey="value" stroke="#00D4A1" fill="url(#pGrad)" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <DollarSign size={32} className="text-text-muted mx-auto mb-2" />
-                <p className="text-text-muted text-sm">No trading history yet</p>
-                <p className="text-text-muted text-xs mt-1">The AI will start trading once connected to Bitget</p>
+      <div className="grid grid-cols-3 gap-6 mb-6">
+        <div className="col-span-2 panel-surface p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[rgba(34,197,94,0.1)] flex items-center justify-center border border-[rgba(34,197,94,0.2)]">
+                <Wallet className="text-[#22c55e]" size={20} />
+              </div>
+              <div>
+                <p className="text-xs text-[#a1a1aa]">Available Balance</p>
+                <p className="text-2xl font-medium text-[#fafafa] font-mono-data">$${balance.toLocaleString()}</p>
               </div>
             </div>
-          )}
-        </div>
-      </Card>
+            <div className="text-right">
+              <p className="text-xs text-[#a1a1aa]">Total P&L (24h)</p>
+              <div className={`flex items-center justify-end gap-1 font-mono-data ${portfolioChange >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                {portfolioChange >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                <span className="text-lg font-medium">{portfolioChange >= 0 ? '+' : ''}{portfolioChange.toFixed(2)}%</span>
+              </div>
+            </div>
+          </div>
 
-      {/* Trade History */}
-      <Card>
-        <p className="text-white text-xs font-semibold uppercase tracking-wider mb-3">Recent Trades</p>
-        {trades.length === 0 ? (
-          <p className="text-text-muted text-sm text-center py-6">No trades yet — AI is learning the market</p>
-        ) : (
-          <div className="space-y-2">
-            {trades.slice(0, 20).map(t => (
-              <div key={t.id} className="flex items-center gap-3 py-1.5 border-b border-bg-border last:border-0">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.side === 'buy' ? 'bg-green-trade/20 text-green-trade' : 'bg-red-trade/20 text-red-trade'}`}>
-                  {t.side.toUpperCase()}
-                </span>
-                <span className="text-white text-xs font-medium">{t.symbol}</span>
-                <span className="text-text-secondary text-xs font-mono">{t.quantity} @ ${t.price.toFixed(4)}</span>
-                {t.pnl !== undefined && (
-                  <span className={`ml-auto text-xs font-mono font-bold ${t.pnl >= 0 ? 'text-green-trade' : 'text-red-trade'}`}>
-                    {t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(4)}
-                  </span>
-                )}
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.status === 'open' ? 'bg-blue-ai/20 text-blue-ai' : 'bg-bg-border text-text-muted'}`}>
-                  {t.status}
-                </span>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold mb-1">Invested</p>
+              <p className="text-lg font-medium text-[#fafafa] font-mono-data">$${(portfolioValue - balance).toLocaleString()}</p>
+            </div>
+            <div className="p-4 rounded-xl bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold mb-1">ROI (30d)</p>
+              <p className="text-lg font-medium text-[#22c55e] font-mono-data">+12.4%</p>
+            </div>
+            <div className="p-4 rounded-xl bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-widest font-bold mb-1">Active Trades</p>
+              <p className="text-lg font-medium text-[#3b82f6] font-mono-data">4</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel-surface p-6">
+          <p className="text-sm font-medium text-[#fafafa] mb-4">Asset Allocation</p>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                  isAnimationActive={false}
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: '#1f1f1f',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            {data.map((item) => (
+              <div key={item.name} className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                <span className="text-[10px] text-[#a1a1aa]">{item.name}</span>
+                <span className="text-[10px] text-[#fafafa] font-mono-data ml-auto">{item.value}%</span>
               </div>
             ))}
           </div>
-        )}
-      </Card>
+        </div>
+      </div>
+
+      <div className="panel-surface overflow-hidden">
+        <div className="p-4 border-b border-[rgba(255,255,255,0.05)] flex items-center justify-between bg-[rgba(255,255,255,0.02)]">
+          <span className="text-sm font-medium text-[#fafafa]">Asset Breakdown</span>
+          <button className="p-1.5 rounded-lg hover:bg-[rgba(255,255,255,0.05)] text-[#52525b]">
+            <MoreHorizontal size={16} />
+          </button>
+        </div>
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="text-[#52525b] border-b border-[rgba(255,255,255,0.05)]">
+              <th className="px-6 py-4 font-medium">Asset</th>
+              <th className="px-6 py-4 font-medium">Balance</th>
+              <th className="px-6 py-4 font-medium">Value (USD)</th>
+              <th className="px-6 py-4 font-medium">Allocation</th>
+              <th className="px-6 py-4 font-medium text-right">P&L</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[rgba(255,255,255,0.05)]">
+            {tickers.slice(0, 4).map((ticker, i) => (
+              <tr key={ticker.symbol} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-[#1f1f1f] flex items-center justify-center border border-[rgba(255,255,255,0.05)]">
+                      <span className="text-[10px] font-bold text-[#fafafa]">{ticker.symbol.split('/')[0]}</span>
+                    </div>
+                    <span className="font-medium text-[#fafafa]">{ticker.symbol.split('/')[0]}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-[#a1a1aa] font-mono-data">
+                  {(1.245 * (i + 1)).toFixed(3)} {ticker.symbol.split('/')[0]}
+                </td>
+                <td className="px-6 py-4 text-[#fafafa] font-mono-data">
+                  $${(ticker.price * 1.245 * (i + 1)).toLocaleString()}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-[rgba(255,255,255,0.05)] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#22c55e] rounded-full" style={{ width: `${25 - i * 5}%` }} />
+                    </div>
+                    <span className="text-[10px] text-[#52525b] font-mono-data">{25 - i * 5}%</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right font-mono-data text-[#22c55e]">
+                  +$${(124.50 * (i + 1)).toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
