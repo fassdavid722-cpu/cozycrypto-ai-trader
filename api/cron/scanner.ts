@@ -69,7 +69,7 @@ async function getBalance() {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  console.log('🤖 Advanced Autonomous Heartbeat Started...')
+  console.log('🤖 Full Spectrum Autonomous Heartbeat Started...')
   const startTime = Date.now()
   const balance = await getBalance()
   
@@ -84,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let tradesExecuted = 0
   const remainingTrades: any[] = []
 
-  // 1. FEEDBACK LOOP: Evaluate Active Trades
+  // 1. FEEDBACK LOOP
   for (const trade of activeTrades) {
     const market = await getMarketData(trade.symbol)
     if (market) {
@@ -92,7 +92,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (evaluation) {
         if (evaluation.hard_lesson) insights.lessons.push(`[HARD LESSON] ${evaluation.hard_lesson}`)
         logs.push({ t: new Date().toISOString(), msg: `EVALUATED ${trade.symbol}: ${evaluation.analysis}` })
-        // If trade is closed (logic for closing would go here), don't add to remainingTrades
       }
     }
   }
@@ -105,8 +104,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const technical = await agentCall('technical', { symbol, marketData: market })
       const sentiment = await agentCall('sentiment', { symbol, fearGreed: market.fearGreed, news: [] })
-      const risk = await agentCall('risk', { symbol, technical, sentiment, portfolio: { balance }, marketData: market })
-      const decision = await agentCall('orchestrator', { symbol, technical, sentiment, risk })
+      const onchain = await agentCall('onchain', { symbol, onChainData: { whales: [], flows: [], smartMoney: [] } })
+      const risk = await agentCall('risk', { symbol, technical, sentiment, onchain, portfolio: { balance }, marketData: market })
+      const decision = await agentCall('orchestrator', { symbol, technical, sentiment, onchain, risk })
 
       if (decision && decision.action !== 'wait' && decision.confidence >= MIN_CONF && balance >= 10) {
         tradesExecuted++
@@ -117,14 +117,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         logs.push({ t: new Date().toISOString(), msg: `${symbol}: Waiting (Conf: ${decision?.confidence || 0}%)` })
       }
 
-      results.push({ symbol, technical, sentiment, risk, decision })
+      results.push({ symbol, technical, sentiment, onchain, risk, decision })
       
       if (decision && decision.thinking) {
         insights.detailed_reasoning.push({
           symbol,
           thinking: decision.thinking,
           t: new Date().toISOString(),
-          agents: { technical: technical?.reasoning, sentiment: sentiment?.reasoning, risk: risk?.reasoning }
+          agents: { technical: technical?.reasoning, sentiment: sentiment?.reasoning, onchain: onchain?.reasoning, risk: risk?.reasoning }
         })
       }
       if (decision && decision.new_lesson) insights.lessons.push(decision.new_lesson)
@@ -138,7 +138,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const health = await agentCall('health', { status: { balance, scanned: results.length }, logs: logs.slice(-5), config: { MIN_CONF } })
   if (health) {
     logs.push({ t: new Date().toISOString(), msg: `HEALTH: ${health.status_report}` })
-    if (health.anomalies) logs.push({ t: new Date().toISOString(), msg: `ANOMALIES: ${JSON.stringify(health.anomalies)}` })
   }
 
   // Cleanup and Save
@@ -147,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   insights.lastUpdated = new Date().toISOString()
 
   await Promise.all([
-    ghSave('logs/learned_insights.json', insights, '🧠 Advanced learning update'),
+    ghSave('logs/learned_insights.json', insights, '🧠 Full spectrum learning update'),
     ghSave('logs/system_logs.json', logs.slice(-100), `📜 heartbeat — ${tradesExecuted} trades`),
     ghSave('logs/active_trades.json', remainingTrades, '💼 Active trades update')
   ])
