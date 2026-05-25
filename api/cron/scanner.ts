@@ -15,8 +15,6 @@ const TRADE_MODE    = process.env.TRADE_MODE || 'autonomous'
 const GH_TOKEN      = process.env.GITHUB_TOKEN || ''
 const GH_REPO       = process.env.GITHUB_REPO || ''
 
-const WATCH_PAIRS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
-
 // ── Utilities ──────────────────────────────────────────────────────────────────
 function sign(ts: string, method: string, path: string, body = '') {
   return crypto.createHmac('sha256', SECRET_KEY).update(ts + method + path + body).digest('base64')
@@ -74,7 +72,7 @@ async function groqCall(messages: any[]) {
     body: JSON.stringify({ 
       model: 'llama-3.3-70b-versatile', 
       messages, 
-      temperature: 0.1, 
+      temperature: 0.4, 
       response_format: { type: 'json_object' } 
     }),
   })
@@ -83,6 +81,17 @@ async function groqCall(messages: any[]) {
 }
 
 // ── Market Data ────────────────────────────────────────────────────────────────
+async function fetchTop50() {
+  try {
+    const res = await fetch(`${BITGET_BASE}/api/v2/spot/market/tickers`)
+    const data = await res.json() as any
+    return (data.data || [])
+      .filter((t: any) => t.symbol.endsWith('USDT'))
+      .sort((a: any, b: any) => parseFloat(b.usdtVolume) - parseFloat(a.usdtVolume))
+      .slice(0, 50)
+  } catch { return [] }
+}
+
 async function getMarketData(symbol: string) {
   try {
     const [tickR, candleR] = await Promise.all([
@@ -136,69 +145,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   console.log('🚀 Starting Autonomous Heartbeat...')
-  const results = []
   const balance = await getBalance()
   
   // Load Memory
-  const [logs, insights] = await Promise.all([
+  const [logs, insights, goals] = await Promise.all([
     loadFromGitHub('logs/system_logs.json').then(d => d || []),
-    loadFromGitHub('logs/learned_insights.json').then(d => d || { lessons: [] })
+    loadFromGitHub('logs/learned_insights.json').then(d => d || { lessons: [] }),
+    loadFromGitHub('goals/active_goals.json').then(d => d || [])
   ])
 
-  logs.push({ t: new Date().toISOString(), msg: `Heartbeat started. Balance: $${balance}` })
+  const tickers = await fetchTop50()
+  const top5 = tickers.slice(0, 5)
+  
+  const prompt = `You are COZANET — a High-IQ Autonomous AI Lead Trader.
+  Your mission is to scan the market, learn from patterns, and execute paper trades to build a track record.
 
-  for (const symbol of WATCH_PAIRS) {
-    try {
-      const market = await getMarketData(symbol)
-      if (!market) continue
+  CURRENT MARKET:
+  - Top 5 Movers: ${JSON.stringify(top5)}
+  - Balance: ${balance} USDT.
+  - LEARNED LESSONS: ${JSON.stringify(insights.lessons)}
+  
+  YOUR TASK:
+  1. ANALYZE: Look for SMC patterns (BOS, CHoCH, FVG).
+  2. LEARN: You MUST identify at least one specific lesson or observation from this scan.
+  3. TRADE: If you see a setup with >50% confidence, you MUST propose a paper trade.
 
-      const prompt = `Analyze ${symbol} at $${market.price}. 24h Change: ${market.change24h}%.
-      RECENT CANDLES (H, L, C): ${JSON.stringify(market.candles)}
-      Balance: ${balance} USDT. Max Trade: ${balance * MAX_PCT / 100} USDT.
-      LEARNED LESSONS: ${JSON.stringify(insights.lessons)}
-      
-      Output JSON: { 
-        "thinking": "Your step-by-step logical reasoning",
-        "action": "buy"|"sell"|"wait", 
-        "confidence": 0-100, 
-        "reason": "Final summary reason", 
-        "tp": price, 
-        "sl": price, 
-        "size": usdt 
-      }`
+  Output JSON: { 
+    "thinking": "Your step-by-step logical reasoning",
+    "insight": "A specific lesson learned from this scan",
+    "action": "buy"|"sell"|"wait", 
+    "symbol": "BTCUSDT",
+    "confidence": 0-100, 
+    "reason": "Final summary reason", 
+    "tp": price, 
+    "sl": price, 
+    "size": usdt 
+  }`
 
-      const analysis = await groqCall([
-        { role: 'system', content: 'You are an elite autonomous trader. You act proactively without waiting for prompts. Output JSON only.' },
-        { role: 'user', content: prompt }
-      ])
+  const decision = await groqCall([
+    { role: 'system', content: 'You are an elite autonomous trader. You act proactively without waiting for prompts. Output JSON only.' },
+    { role: 'user', content: prompt }
+  ])
 
-      let execution = null
-      if (analysis.action !== 'wait' && analysis.confidence >= MIN_CONF && balance > 10) {
-        execution = await executeTrade(symbol, analysis.action, analysis.size || (balance * MAX_PCT / 100))
-        const logMsg = `I executed ${analysis.action.toUpperCase()} on ${symbol}. Result: ${execution.msg || 'Success'}`
-        logs.push({ t: new Date().toISOString(), msg: logMsg })
-        
-        await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*
-Pair: #${symbol}
-Action: ${analysis.action.toUpperCase()}
-Price: $${market.price}
-Confidence: ${analysis.confidence}%
-Reason: ${analysis.reason}`)
-      }
+  // Process Insight
+  if (decision.insight) {
+    insights.lessons = [...new Set([...insights.lessons, decision.insight])].slice(-20)
+    await saveToGitHub('logs/learned_insights.json', insights, '🧠 new insight learned')
+  }
 
-      results.push({ symbol, analysis, execution })
-    } catch (e) {
-      console.error(`Error scanning ${symbol}:`, e)
+  // Process Trade (Paper or Real)
+  if (decision.action !== 'wait' && decision.confidence >= 50) {
+    const trade = { ...decision, timestamp: Date.now(), type: balance > 10 ? 'real' : 'paper' }
+    
+    if (balance > 10 && decision.confidence >= MIN_CONF) {
+      const execution = await executeTrade(decision.symbol, decision.action, decision.size || (balance * MAX_PCT / 100))
+      trade.execution = execution
+      logs.push({ t: new Date().toISOString(), msg: `I executed ${decision.action.toUpperCase()} on ${decision.symbol}.` })
+      await sendTelegram(`🤖 *AUTONOMOUS TRADE EXECUTED*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nConfidence: ${decision.confidence}%\nReason: ${decision.reason}`)
+    } else {
+      goals.push(trade)
+      logs.push({ t: new Date().toISOString(), msg: `I recorded a PAPER TRADE on ${decision.symbol}.` })
+      await saveToGitHub('goals/active_goals.json', goals.slice(-50), '📝 paper trade recorded')
     }
   }
 
-  // Save State
+  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Scanned top 50 coins.` })
   await saveToGitHub('logs/system_logs.json', logs.slice(-100), '📜 heartbeat update')
 
   return res.status(200).json({
     timestamp: new Date().toISOString(),
     balance,
-    scanned: results.length,
-    results
+    decision
   })
 }
