@@ -124,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  console.log('🚀 Starting Eagle Eye Heartbeat...')
+  console.log('🚀 Starting Liquidity Hunter Heartbeat...')
   const balance = await getBalance()
   
   // Load Memory
@@ -147,12 +147,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return { symbol: t.symbol, price: t.lastPr, c4h, c1h, c15m }
   }))
   
-  const prompt = `You are COZANET — a High-IQ Autonomous AI Lead Trader with "Eagle Eye" Multi-Timeframe Confluence.
+  const prompt = `You are COZANET — a High-IQ Autonomous AI Lead Trader with "Liquidity Hunter" vision.
 
   PHILOSOPHY:
-  - "Risk is the only way to learn."
+  - "Liquidity is the fuel."
   - "The Gold" is in the patterns.
-  - "Eagle Eye": 4H for Trend, 1H for Structure, 15m for Sniper Entry.
+  - "Eagle Eye": 4H Trend, 1H Structure, 15m Sniper Entry.
+  - "Liquidity Hunter": Identify Equal Highs/Lows and Liquidity Sweeps.
 
   CURRENT MARKET (Top 3 Movers):
   ${JSON.stringify(marketContext)}
@@ -163,15 +164,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   - HARD RULES: ${JSON.stringify(insights.rules || [])}
   
   YOUR TASK:
-  1. REGIME DETECTION: Is the market Trending or Ranging?
-  2. CONFLUENCE CHECK: Do the 4H, 1H, and 15m timeframes align for a trade?
-  3. PATTERN AGGREGATOR: Review your recent trades for "Gold" patterns.
-  4. TRADE: You MUST execute at least one paper trade based on this "Eagle Eye" confluence.
+  1. LIQUIDITY SCAN: Identify Equal Highs (BSL) or Equal Lows (SSL).
+  2. SWEEP DETECTION: Has the price recently swept a major high or low?
+  3. INDUCEMENT CHECK: Is this a real setup or a trap for retail traders?
+  4. TRADE: You MUST execute at least one paper trade based on a Liquidity Sweep + SMC Confluence.
 
   Output JSON: { 
-    "thinking": "Your multi-timeframe analysis and regime detection.",
-    "regime": "Trending"|"Ranging",
-    "confluence": "High"|"Medium"|"Low",
+    "thinking": "Your liquidity-first analysis and sweep detection.",
+    "liquidity_zone": "BSL"|"SSL"|"None",
+    "sweep_detected": true|false,
     "new_rule": "A specific hard rule to follow (if any).",
     "action": "buy"|"sell", 
     "symbol": "BTCUSDT",
@@ -183,29 +184,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }`
 
   const decision = await groqCall([
-    { role: 'system', content: 'You are an elite autonomous trader with Eagle Eye vision. Output JSON only.' },
+    { role: 'system', content: 'You are an elite autonomous trader and Liquidity Hunter. Output JSON only.' },
     { role: 'user', content: prompt }
   ])
 
   // Process Rules & Insights
   if (decision.new_rule) {
     insights.rules = [...new Set([...(insights.rules || []), decision.new_rule])].slice(-10)
-    await saveToGitHub('logs/learned_insights.json', insights, '🧠 eagle eye rule update')
+    await saveToGitHub('logs/learned_insights.json', insights, '🧠 liquidity hunter rule update')
   }
 
   // Process Trade
   if (decision.action && decision.symbol) {
     const trade = { ...decision, timestamp: Date.now(), type: balance > 10 ? 'real' : 'paper' }
     goals.push(trade)
-    logs.push({ t: new Date().toISOString(), msg: `[Eagle Eye] I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol}. Confluence: ${decision.confluence}.` })
-    await saveToGitHub('goals/active_goals.json', goals.slice(-200), '📝 eagle eye trade recorded')
+    logs.push({ t: new Date().toISOString(), msg: `[Liquidity Hunter] I executed a ${trade.type.toUpperCase()} ${decision.action.toUpperCase()} on ${decision.symbol}. Sweep: ${decision.sweep_detected}.` })
+    await saveToGitHub('goals/active_goals.json', goals.slice(-200), '📝 liquidity hunter trade recorded')
     
     if (trade.type === 'real' && decision.confidence >= MIN_CONF) {
-      await sendTelegram(`🦅 *EAGLE EYE TRADE EXECUTED*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nRegime: ${decision.regime}\nConfluence: ${decision.confluence}\nReason: ${decision.reason}`)
+      await sendTelegram(`🎯 *LIQUIDITY SWEEP TRADE*\nPair: #${decision.symbol}\nAction: ${decision.action.toUpperCase()}\nZone: ${decision.liquidity_zone}\nSweep: ${decision.sweep_detected ? 'YES' : 'NO'}\nReason: ${decision.reason}`)
     }
   }
 
-  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Eagle Eye Multi-Timeframe active.` })
+  logs.push({ t: new Date().toISOString(), msg: `Heartbeat finished. Liquidity Hunter active.` })
   await saveToGitHub('logs/system_logs.json', logs.slice(-100), '📜 heartbeat update')
 
   return res.status(200).json({
