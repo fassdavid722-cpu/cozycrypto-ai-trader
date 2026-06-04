@@ -1,45 +1,49 @@
-# 🤖 CozyCrypto AI Trader - Autonomous Mode 🚀
+# CozyCrypto AI Autonomous Trader 🦅🎯
 
-Fully autonomous AI trading bot with 24/7 market scanning, SMC-based analysis, and auto-execution.
+An elite, autonomous AI trading platform built with **React**, **Vite**, **Vercel**, and **Groq AI**. This system is designed to be a "True AI Trader" that scans, learns, and executes trades with institutional-level precision.
 
-## 🌟 New Autonomous Features
-- **24/7 Market Scanner:** Scans top pairs (BTC, ETH, SOL, etc.) every 5 minutes.
-- **SMC Intelligence:** Uses Smart Money Concepts (Order Blocks, FVG) via Groq Llama-3.
-- **Auto-Execution:** Executes trades on Bitget if confidence > 55% and R:R > 1.5.
-- **Telegram Alerts:** Real-time notifications for every scan and trade.
-- **Vercel Cron Integration:** Automated scheduling built-in.
+## 🚀 Elite Features
 
-**Autonomous AI trading platform for Cozanet. Built for Bitget. Deployed on Vercel.**
+### 1. Eagle Eye Multi-Timeframe Confluence
+The AI doesn't just look at one chart. It analyzes the **4H (Trend)**, **1H (Structure)**, and **15m (Sniper Entry)** timeframes simultaneously to find high-probability setups.
 
-> Multi-agent. Self-learning. Elite trader even on a $3 account.
+### 2. Liquidity Hunter
+Detects **BSL (Buy-side Liquidity)** and **SSL (Sell-side Liquidity)** zones. It specifically looks for **Liquidity Sweeps** and **Inducement** to avoid retail traps and enter with the "Big Money."
 
-## Deploy to Vercel
+### 3. Dynamic Risk Engine
+Protects capital using **ATR-based position sizing**. It dynamically adjusts Stop-Loss and Take-Profit levels based on market volatility, ensuring a healthy Risk-to-Reward ratio.
 
-1. Import **this repo** at vercel.com → New Project
-2. **Root Directory**: leave as `/` (repo root)
-3. Add Environment Variables:
-   - `GROQ_API_KEY` — your Groq key
-   - `GROQ_API_KEY_2` — optional second key for failover
-   - `BITGET_API_KEY` — Bitget API key
-   - `BITGET_SECRET_KEY` — Bitget secret
-   - `BITGET_PASSPHRASE` — Bitget passphrase
-4. Click Deploy ✅
+### 4. Self-Learning Feedback Loop
+The AI reviews its own trade history to identify "The Gold" (what works) and "The Trash" (what doesn't). It generates **Hard Rules** in its memory to evolve its strategy over time.
 
-## Architecture
-- `frontend/` — React 18 + Vite + Tailwind + Zustand
-- `api/` — Vercel serverless functions (Node 20)
-  - `chat.ts` — Multi-brain Groq AI (5 specialized brains)
-  - `analyze.ts` — Multi-timeframe SMC analysis
-  - `trade.ts` — Bitget spot order execution
-  - `portfolio.ts` — Account & balance data
-  - `market/tickers.ts` — Real-time prices
-  - `workflows.ts` — Autonomous workflow status
-- `backend/` — Optional FastAPI server (deploy on Render for full features)
+### 5. Autonomous Heartbeat
+Powered by **GitHub Actions**, the AI "wakes up" every 5 minutes to scan the top 50 coins on Bitget. It operates 24/7 without needing any user prompts.
 
-## Blueprint Upgrades (V2)
-- Multi-agent pipeline: Analyst → Risk Manager → Executor
-- Confidence gating (65% threshold)
-- Fear & Greed index monitoring
-- Sentiment + on-chain learning
-- Adaptive learner interval (10min on high volatility)
-- Chain-of-thought reasoning per signal
+## 🛠 Tech Stack
+- **Frontend:** React + Tailwind CSS + Framer Motion (Mobile-Sharp UI)
+- **Backend:** Vercel Serverless Functions (TypeScript)
+- **AI Brain:** Groq Llama-3.3-70B (Chain of Thought Reasoning)
+- **Automation:** GitHub Actions (Heartbeat Trigger)
+- **Exchange:** Bitget API (Spot Trading)
+
+## 📦 Setup & Deployment
+
+### Environment Variables (Vercel)
+- `GROQ_API_KEY`: Your Groq API key.
+- `BITGET_API_KEY`, `BITGET_SECRET_KEY`, `BITGET_PASSPHRASE`: Your Bitget API credentials.
+- `GITHUB_TOKEN`: A PAT with `repo` permissions.
+- `GITHUB_REPO`: Your repo in `username/repo` format.
+- `CRON_SECRET`: A secure string to authorize the heartbeat.
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: For real-time trade alerts.
+
+### GitHub Secrets
+- `CRON_SECRET`: Must match the Vercel variable.
+- `VERCEL_URL`: Your project's live URL.
+
+## 🧠 Memory Files
+- `logs/learned_insights.json`: Stores AI lessons and Hard Rules.
+- `goals/active_goals.json`: Tracks paper and live trades.
+- `logs/system_logs.json`: Chronological heartbeat and execution logs.
+
+---
+*Built with ❤️ for the next generation of autonomous traders.*
